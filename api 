@@ -1,0 +1,14 @@
+import pandas as pd
+
+df = pd.read_excel("assets.xlsx")
+
+def calculate_risk(c,i,a):
+    impact = c*0.4 + i*0.3 + a*0.3
+    return impact*10
+
+df["risk_score"] = df.apply(
+    lambda x: calculate_risk(x["C"],x["I"],x["A"]),
+    axis=1
+)
+
+print(df)
