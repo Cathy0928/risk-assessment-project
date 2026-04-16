@@ -1,11 +1,11 @@
 #-----------------------
-# 匯入模組
+# 模組匯入
 #-----------------------
 from flask import Flask, render_template, request, jsonify
-from engine.decision_support import get_rag_advice # 這裡修正了！
+from engine.decision_support import get_rag_advice
 
 #-----------------------
-# 產生主程式
+# 系統初始化
 #-----------------------
 app = Flask(__name__)
 app.secret_key = 'your_unique_secret_key'
@@ -14,26 +14,23 @@ app.secret_key = 'your_unique_secret_key'
 def index():
     return render_template('index.html')
 
-# 成員 D 的核心 API
+# 核心評估 API
 @app.route('/api/evaluate', methods=['POST'])
 def evaluate():
     data = request.json
     content = data.get('content', '')
 
-    # 這裡 Mock B 與 C 的結果 (假設他們已經算好了)
-    mock_risk_level = "High" if len(content) > 10 else "Low"
+    # 基礎風險判定邏輯
+    risk_level = "高 (High)" if len(content) > 10 else "中 (Medium)"
     
-    # 呼叫 D 的 RAG 邏輯
-    final_advice = get_rag_advice(content, mock_risk_level)
+    # 產出決策建議
+    final_advice = get_rag_advice(content, risk_level)
 
     return jsonify({
         "status": "success",
-        "risk_level": mock_risk_level,
+        "risk_level": risk_level,
         "suggestion": final_advice
     })
 
-#-------------------------
-# 啟動主程式
-#-------------------------
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

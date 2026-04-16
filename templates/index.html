@@ -1,34 +1,57 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>D 部分測試 - 資安 AI 顧問</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資安風險評估 AI 顧問系統</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
-        textarea { width: 100%; height: 100px; margin-bottom: 10px; }
-        #resultBox { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+        body { font-family: 'Microsoft JhengHei', sans-serif; padding: 40px; background-color: #f8f9fa; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        textarea { width: 100%; height: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; margin: 10px 0; }
+        button { background-color: #3498db; color: white; border: none; padding: 12px 25px; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #2980b9; }
+        .result-section { margin-top: 30px; background: #fdfdfd; border-left: 5px solid #3498db; padding: 20px; }
+        #resultBox { white-space: pre-wrap; font-size: 15px; color: #444; }
     </style>
 </head>
 <body>
-    <h2>資安風險評估 - 成員 D 功能測試</h2>
-    <p>請輸入資產狀況（例如：資料庫密碼管理不當）：</p>
-    <textarea id="userInput"></textarea>
-    <button onclick="runTest()">送出評估</button>
+    <div class="container">
+        <h1>資安風險評估 AI 顧問</h1>
+        <p>請輸入您的資產狀況或潛在安全疑慮，系統將自動匹配國際標準並提供建議：</p>
+        
+        <textarea id="userInput" placeholder="例如：公司內部的雲端資料庫未設定雙重驗證..."></textarea>
+        <button onclick="runAssessment()">提交評估</button>
 
-    <h3>評估結果：</h3>
-    <div id="resultBox">等待輸入...</div>
+        <div class="result-section">
+            <h3>評估分析結果：</h3>
+            <div id="resultBox">等待系統分析...</div>
+        </div>
+    </div>
 
     <script>
-        async function runTest() {
+        async function runAssessment() {
+            const resultBox = document.getElementById('resultBox');
             const content = document.getElementById('userInput').value;
-            const res = await fetch('/api/evaluate', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({content: content})
-            });
-            const data = await res.json();
-            document.getElementById('resultBox').innerText = 
-                `風險等級：${data.risk_level}\n\n${data.suggestion}`;
+            
+            if (!content) {
+                alert("請輸入內容以進行評估");
+                return;
+            }
+
+            resultBox.innerText = "分析中，請稍候...";
+
+            try {
+                const res = await fetch('/api/evaluate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: content})
+                });
+                const data = await res.json();
+                resultBox.innerText = data.suggestion;
+            } catch (error) {
+                resultBox.innerText = "系統連線錯誤，請稍後再試。";
+            }
         }
     </script>
 </body>
