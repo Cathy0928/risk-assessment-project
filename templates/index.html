@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>資安風險評估 AI 顧問</title>
+</head>
+<body>
+    <h1>資安風險評估 AI 顧問</h1>
+    <textarea id="userInput" placeholder="請輸入您的資產狀況或資安疑慮..."></textarea>
+    <button onclick="sendData()">開始評估</button>
+    <div id="result"></div>
+
+    <script>
+        async function sendData() {
+            const content = document.getElementById('userInput').value;
+            const response = await fetch('/api/evaluate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content: content})
+            });
+            const data = await response.json();
+            document.getElementById('result').innerText = 
+                `風險等級：${data.risk_level}\n建議：${data.suggestion}`;
+        }
+    </script>
+</body>
+</html>
