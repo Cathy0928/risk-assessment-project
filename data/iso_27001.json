@@ -1,0 +1,50 @@
+[
+    {
+        "id": "5.7",
+        "category": "組織控制",
+        "title": "威脅情資 (Threat Intelligence)",
+        "content": "應蒐集與分析資安威脅相關資訊，產生情資以採取預防措施。"
+    },
+    {
+        "id": "5.15",
+        "category": "組織控制",
+        "title": "存取控制 (Access Control)",
+        "content": "應根據業務要求與安全政策，建立、記錄及審查存取權限，實施最小權限原則。"
+    },
+    {
+        "id": "5.23",
+        "category": "組織控制",
+        "title": "雲端服務資安 (Cloud Security)",
+        "content": "應建立獲取、使用、管理及退出雲端服務的過程，明確責任劃分。"
+    },
+    {
+        "id": "7.4",
+        "category": "實體控制",
+        "title": "實體安全監視 (Physical Monitoring)",
+        "content": "應持續監視辦公室、機房等場所，防止未經授權的實體進出。"
+    },
+    {
+        "id": "8.1",
+        "category": "技術控制",
+        "title": "使用者端設備安全 (User Endpoint Devices)",
+        "content": "應對儲存、處理資訊的使用者設備實施安全控制，如加密、遠端抹除。"
+    },
+    {
+        "id": "8.11",
+        "category": "技術控制",
+        "title": "資料遮蔽 (Data Masking)",
+        "content": "應根據政策對敏感資料進行遮蔽或加密，防止資料洩漏。"
+    },
+    {
+        "id": "8.12",
+        "category": "技術控制",
+        "title": "資料外洩預防 (Data Leakage Prevention)",
+        "content": "應對處理、儲存敏感資訊的系統實施資料外洩監視與預防措施。"
+    },
+    {
+        "id": "8.28",
+        "category": "技術控制",
+        "title": "安全編碼 (Secure Coding)",
+        "content": "應定義並應用安全程式開發原則，減少軟體中的潛在漏洞。"
+    }
+]

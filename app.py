@@ -2,50 +2,38 @@
 # 匯入模組
 #-----------------------
 from flask import Flask, render_template, request, jsonify
+from engine.decision_support import get_rag_advice # 這裡修正了！
 
 #-----------------------
-# 匯入各個服務藍圖 (Blueprint)
+# 產生主程式
 #-----------------------
-# 未來若有 api/ 或 utils/ 的功能，可在此匯入並註冊
-# from api.risk_api import risk_bp 
-
-#-------------------------
-# 產生主程式, 加入主畫面
-#-------------------------
 app = Flask(__name__)
-app.secret_key = 'your_unique_secret_key'  # 設置 secret_key
+app.secret_key = 'your_unique_secret_key'
 
-# 主畫面：渲染首頁 HTML
 @app.route('/')
 def index():
-    # 這裡會去 templates 資料夾找 index.html
-    # 如果還沒建立 HTML，可以先回傳簡單的文字
-    return "<h1>資安風險評估 AI 顧問系統</h1><p>系統已啟動，等待前端介面串接...</p>"
+    return render_template('index.html')
 
-# 風險評估 API：處理 AI 分析請求
+# 成員 D 的核心 API
 @app.route('/api/evaluate', methods=['POST'])
 def evaluate():
     data = request.json
-    user_input = data.get('content', '')
-    
-    # 這裡未來會接 AI 模型或風險計算邏輯
-    # 目前先回傳固定格式的 JSON 作為測試
-    result = {
-        "status": "success",
-        "risk_level": "High",
-        "suggestion": "根據初步評估，建議優先檢查身分驗證機制與資料備份策略。"
-    }
-    return jsonify(result)
+    content = data.get('content', '')
 
-#-------------------------
-# 在主程式註冊各個服務
-#-------------------------
-# app.register_blueprint(risk_bp)
+    # 這裡 Mock B 與 C 的結果 (假設他們已經算好了)
+    mock_risk_level = "High" if len(content) > 10 else "Low"
+    
+    # 呼叫 D 的 RAG 邏輯
+    final_advice = get_rag_advice(content, mock_risk_level)
+
+    return jsonify({
+        "status": "success",
+        "risk_level": mock_risk_level,
+        "suggestion": final_advice
+    })
 
 #-------------------------
 # 啟動主程式
 #-------------------------
 if __name__ == '__main__':
-    # debug=True 會在程式更改時自動重啟，方便開發
     app.run(debug=True, port=5000)
-

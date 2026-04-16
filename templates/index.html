@@ -1,25 +1,34 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>資安風險評估 AI 顧問</title>
+    <meta charset="UTF-8">
+    <title>D 部分測試 - 資安 AI 顧問</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+        textarea { width: 100%; height: 100px; margin-bottom: 10px; }
+        #resultBox { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; }
+    </style>
 </head>
 <body>
-    <h1>資安風險評估 AI 顧問</h1>
-    <textarea id="userInput" placeholder="請輸入您的資產狀況或資安疑慮..."></textarea>
-    <button onclick="sendData()">開始評估</button>
-    <div id="result"></div>
+    <h2>資安風險評估 - 成員 D 功能測試</h2>
+    <p>請輸入資產狀況（例如：資料庫密碼管理不當）：</p>
+    <textarea id="userInput"></textarea>
+    <button onclick="runTest()">送出評估</button>
+
+    <h3>評估結果：</h3>
+    <div id="resultBox">等待輸入...</div>
 
     <script>
-        async function sendData() {
+        async function runTest() {
             const content = document.getElementById('userInput').value;
-            const response = await fetch('/api/evaluate', {
+            const res = await fetch('/api/evaluate', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({content: content})
             });
-            const data = await response.json();
-            document.getElementById('result').innerText = 
-                `風險等級：${data.risk_level}\n建議：${data.suggestion}`;
+            const data = await res.json();
+            document.getElementById('resultBox').innerText = 
+                `風險等級：${data.risk_level}\n\n${data.suggestion}`;
         }
     </script>
 </body>
