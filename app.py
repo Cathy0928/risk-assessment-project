@@ -1,36 +1,56 @@
-#-----------------------
-# 模組匯入
-#-----------------------
-from flask import Flask, render_template, request, jsonify
-from engine.decision_support import get_rag_advice
+from __future__ import annotations
 
-#-----------------------
-# 系統初始化
-#-----------------------
-app = Flask(__name__)
-app.secret_key = 'your_unique_secret_key'
+import pandas as pd
+import streamlit as st
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+from ai_tagger import apply_ai_tagger
+from risk_engine import calculate_risk
 
-# 核心評估 API
-@app.route('/api/evaluate', methods=['POST'])
-def evaluate():
-    data = request.json
-    content = data.get('content', '')
+st.set_page_config(page_title="AI Risk System", layout="wide")
 
-    # 基礎風險判定邏輯
-    risk_level = "高 (High)" if len(content) > 10 else "中 (Medium)"
-    
-    # 產出決策建議
-    final_advice = get_rag_advice(content, risk_level)
+st.title("AI 輔助資產風險評估系統")
+st.caption("Phase 2 MVP：Excel 上傳 + AI CIA 評估 + 規則引擎風險計算")
 
-    return jsonify({
-        "status": "success",
-        "risk_level": risk_level,
-        "suggestion": final_advice
-    })
+st.markdown("### 1) 上傳資產清冊 Excel")
+uploaded_file = st.file_uploader("請上傳 .xlsx 檔案", type=["xlsx"])
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+if uploaded_file is not None:
+    try:
+        df = pd.read_excel(uploaded_file)
+
+        st.markdown("### 2) 原始資產資料")
+        st.dataframe(df, width="stretch")
+
+        df = apply_ai_tagger(df)
+
+        st.markdown("### 3) AI CIA 評估結果")
+        st.dataframe(df, width="stretch")
+
+        result_df = calculate_risk(df)
+
+        st.markdown("### 4) 風險評估結果")
+        st.dataframe(result_df, width="stretch")
+
+        st.markdown("### 5) 風險統計")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("總資產數", len(result_df))
+        col2.metric("平均風險分數", round(result_df["final_score"].mean(), 2))
+        col3.metric(
+            "Critical 資產數",
+            int((result_df["risk_level"] == "Critical").sum())
+        )
+
+        st.markdown("### 6) 高風險資產")
+        high_risk_df = result_df[result_df["final_score"] >= 61].sort_values(
+            by="final_score", ascending=False
+        )
+
+        if high_risk_df.empty:
+            st.success("目前沒有 High / Critical 資產")
+        else:
+            st.dataframe(high_risk_df, width="stretch")
+
+    except Exception as e:
+        st.error(f"處理失敗：{e}")
+else:
+    st.info("先上傳一份符合格式的 Excel 檔案")
