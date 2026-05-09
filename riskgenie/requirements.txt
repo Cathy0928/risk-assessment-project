@@ -1,0 +1,18 @@
+# --- Core ---
+streamlit>=1.30
+pandas>=2.0
+openpyxl>=3.1
+
+# --- LLM (主題一 + 主題三) ---
+google-generativeai>=0.7
+python-dotenv>=1.0
+
+# --- RAG: 語意檢索 ---
+# 推薦裝 sentence-transformers,效果最好(會抓 ~80MB 模型)
+sentence-transformers>=2.2
+
+# 退而求其次的 fallback,sentence-transformers 跑不動時用
+scikit-learn>=1.3
+
+# --- 開發 ---
+pytest>=7.0
