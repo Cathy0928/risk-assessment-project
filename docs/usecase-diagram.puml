@@ -1,0 +1,52 @@
+@startuml
+left to right direction
+
+actor "一般使用者" as User
+actor "資安管理員/\n高階主管" as Manager
+actor "系統管理員" as Admin
+
+rectangle "支援 ISMS 運作之 AI 風險顧問系統" {
+
+  usecase "登入/登出系統" as UC01
+
+  usecase "新增資訊資產" as UC02
+  usecase "修改資訊資產" as UC03
+  usecase "刪除資訊資產" as UC04
+  usecase "查詢資訊資產" as UC05
+
+  usecase "執行資產盤點檢查" as UC06
+  usecase "查看資產盤點缺漏提示" as UC07
+
+  usecase "執行風險評鑑" as UC08
+  usecase "查看風險評鑑結果" as UC09
+  usecase "查看 AI 改善建議" as UC10
+
+  usecase "查看風險報表" as UC11
+  usecase "查看高風險資產" as UC12
+
+  usecase "管理使用者帳號與權限" as UC13
+  usecase "備份系統資料" as UC14
+}
+
+User --> UC01
+User --> UC02
+User --> UC03
+User --> UC04
+User --> UC05
+User --> UC06
+User --> UC08
+User --> UC10
+
+Manager --> UC01
+Manager --> UC11
+Manager --> UC12
+
+Admin --> UC01
+Admin --> UC13
+Admin --> UC14
+
+UC06 .> UC07 : <<include>>
+UC08 .> UC09 : <<include>>
+UC10 .> UC08 : <<extend>>
+
+@enduml
