@@ -1,0 +1,15 @@
+[
+  {
+    "asset_id_code": "2",
+    "asset_name": "233",
+    "asset_type": "DA",
+    "description": "2",
+    "data_type": "2",
+    "owner": "2",
+    "system_dependency": "2",
+    "confidentiality": 1,
+    "integrity": 1,
+    "availability": 1,
+    "original_label": "2"
+  }
+]
