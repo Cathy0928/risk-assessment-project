@@ -1,0 +1,38 @@
+/* static/css/index.css */
+.upload-box {
+    border: 2px dashed #4A4A8A;
+    padding: 60px 40px;
+    text-align: center;
+    background-color: #ffffff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 24px;
+    margin-bottom: 20px;
+    margin-top: 20px;
+}
+
+.action-bar {
+    text-align: right;
+    margin-bottom: 15px;
+}
+
+.add-btn {
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    padding: 6px 16px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* 首頁簡易表格邊框 */
+.asset-table-simple {
+    width: 100%;
+    border-collapse: collapse;
+}
+.asset-table-simple th, .asset-table-simple td {
+    border: 1px solid #000000;
+    padding: 10px;
+    text-align: center;
+    font-size: 18px;
+}

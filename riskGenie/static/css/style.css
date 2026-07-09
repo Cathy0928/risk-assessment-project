@@ -1,0 +1,112 @@
+/* static/style.css */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: "Microsoft JhengHei", Arial, sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background-color: #ffffff;
+}
+
+/* ⬅️ 左側深灰色導覽列 */
+.sidebar {
+    width: 260px;
+    background-color: #757575;
+    color: white;
+    padding: 30px 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-title {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.menu-btn {
+    background: none;
+    border: none;
+    color: white;
+    text-align: left;
+    padding: 12px 15px;
+    font-size: 18px;
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 5px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.menu-btn:hover, .menu-btn.active {
+    background-color: #5a5a5a;
+}
+
+.menu-footer {
+    margin-top: auto; /* 推到最下方 */
+}
+
+/* ➡️ 右側主要工作區 */
+.main-content {
+    flex: 1;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.content-wrapper {
+    width: 100%;
+    max-width: 900px;
+}
+
+/* 虛線檔案上傳框 */
+.upload-box {
+    border: 2px dashed #4A4A8A;
+    padding: 40px;
+    text-align: center;
+    background-color: #ffffff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.action-bar {
+    text-align: right;
+    margin-bottom: 15px;
+}
+
+.add-btn {
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    padding: 6px 16px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* 表格樣式 */
+.asset-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.asset-table th, .asset-table td {
+    border: 1px solid #000000;
+    padding: 10px;
+    text-align: center;
+    font-size: 18px;
+}
+
+.asset-table th {
+    background-color: #ffffff;
+    font-weight: bold;
+}

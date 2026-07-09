@@ -1,0 +1,60 @@
+/* static/css/asset_summary.css */
+.page-title {
+    text-align: center;
+    font-size: 32px;
+    font-weight: 500;
+    margin-bottom: 30px;
+    color: #000000;
+}
+
+.asset-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.asset-table th, .asset-table td {
+    border: 1px solid #000000;
+    padding: 10px;
+    text-align: center;
+    font-size: 18px;
+}
+
+.asset-table th {
+    background-color: #ffffff;
+    font-weight: bold;
+}
+
+/* ✏️ 編輯欄位 */
+.asset-table td.edit-cell {
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    text-align: center;
+    padding-left: 15px;
+    transition: transform 0.1s;
+}
+
+.asset-table td.edit-cell:hover {
+    transform: scale(1.2);
+}
+
+/* 下方圓角按鈕 */
+.bottom-action {
+    text-align: center;
+    margin-top: 40px;
+}
+
+.check-btn {
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    color: #000000;
+    padding: 10px 30px;
+    font-size: 20px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.check-btn:hover {
+    background-color: #f0f0f0;
+}
