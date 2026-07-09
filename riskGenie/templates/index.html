@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Genie 資安管理系統</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-title">👤 Genie</div>
+        <a href="/"><button class="menu-btn active">首  頁</button></a>
+        <a href="/summary"><button class="menu-btn">資產總表</button></a>
+        <button class="menu-btn">風險評鑑</button>
+        <button class="menu-btn">權重設定</button>
+        <button class="menu-btn">ＡＩ建議</button>
+        <button class="menu-btn">建議報表</button>
+        <button class="menu-btn">帳號管理</button>
+        <div class="menu-footer"><button class="menu-btn">⚙️ 設定</button></div>
+    </div>
+
+    <div class="main-content">
+        <div class="content-wrapper">
+            <div class="upload-box">上方上傳檔案(.xlsx)</div>
+            <div class="action-bar"><button class="add-btn">+ 新增資產</button></div>
+            <table class="asset-table-simple">
+                <thead>
+                    <tr><th>編號</th><th>類別</th><th>名稱</th><th>負責單位</th><th>保管單位</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>1</td><td>A</td><td>甲</td><td>A</td><td>A</td></tr>
+                    <tr><td>2</td><td>A</td><td>乙</td><td>A</td><td>A</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</body>
+</html>
