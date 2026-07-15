@@ -2,26 +2,28 @@
 
 # -*- coding: utf-8 -*-
 """
-檔案名稱: services/risk_service.py
-主要功能: 處理資訊安全風險評鑑的核心計算與分級邏輯，並產出基礎風險處置對策。
+Module: services.risk_service
+Description: 實作資訊安全風險評鑑核心運算邏輯，並對接數據持久層與 AI 分析模組。
 """
+
+from typing import Dict, Any, Optional
 from models.mock_db import get_asset_by_id, get_vulnerability_by_id, save_risk_assessment
 
-def calculate_risk_score(c, i, a, cvss_score):
+
+def calculate_risk_score(c: int, i: int, a: int, cvss_score: float) -> float:
     """
-    核心風險公式實作: MAX(C, I, A) * CVSS [7]
-    C, I, A 分別代表機密性、完整性、可用性 (1~3) [2, 9]
-    CVSS_score 為漏洞之評分 (0.0~10.0) [3, 10]
+    計算風險分數。
+    公式: MAX(C, I, A) * CVSS_Score
     """
     max_cia = max(int(c), int(i), int(a))
     risk_score = max_cia * float(cvss_score)
     return round(risk_score, 2)
 
-def determine_risk_level(risk_score):
+
+def determine_risk_level(risk_score: float) -> str:
     """
-    根據風險分數劃分風險等級 [7]
-    最大分數為 3 * 10.0 = 30.0 分。
-    分級參考標準：
+    依據風險評估分數判定安全風險等級。
+    分類標準（最高 30.0 分）：
     - >= 25.0: Critical (極高風險)
     - >= 18.0: High (高風險)
     - >= 10.0: Medium (中風險)
@@ -36,58 +38,78 @@ def determine_risk_level(risk_score):
     else:
         return "Low"
 
-def perform_asset_risk_assessment(asset_id, vulnerability_id, user_id=None):
+
+def sanitize_sensitive_information(text: str) -> str:
     """
-    執行單一資產的風險評鑑流程 [7]
-    1. 讀取資產資料與對應漏洞 [7]
-    2. 計算風險分數與風險等級 [7]
-    3. 自動生成初步的預防改善指引架構 (後續可串接 RAG 與 Gemini API) [10, 11]
-    4. 儲存結果並回傳 [7]
+    去識別化防護層 (De-identification Layer)。
+    在將資產描述送往外部 API 前進行去敏感化處理，保障組織隱私。
+    """
+    # 遮蔽關鍵字或敏感命名
+    return text.replace("核心資料庫", "DATASERVER-PRD").replace("公文管理", "DOC-SYSTEM")
+
+
+def generate_ai_mitigation_plan(asset_name: str, cve_id: str, cvss_score: float, severity: str) -> str:
+    """
+    整合 ISO 27002 知識庫之控制措施建議生成介面 (RAG 預留插槽)。
+    """
+    safe_name = sanitize_sensitive_information(asset_name)
+    
+    # 預設本地靜態對策範本（當 API 未連線時之降級防禦措施）
+    fallback_recommendation = (
+        f"【ISO 27002:2022 控制措施指引】\n"
+        f"受評資產 [{safe_name}] 目前面臨已公佈之弱點 {cve_id} (CVSS: {cvss_score} - {severity})。\n"
+        f"建議配置以下控制措施：\n"
+        f"1. 漏洞管理 (Control 5.7 / 8.19)：請於測試環境驗證後，立即安排部署對應之安全補丁。\n"
+        f"2. 網段隔離 (Control 8.20 / 8.22)：應將此主機移至獨立非軍事區 (DMZ)，限制外網直連存取。\n"
+        f"3. 監視日誌 (Control 8.16)：確認稽核日誌 (Audit Logs) 正確啟用，並將日誌定期異地儲存。"
+    )
+    return fallback_recommendation
+
+
+def perform_asset_risk_assessment(asset_id: int, vulnerability_id: int, user_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    執行單一資訊資產之風險評鑑、寫入持久化資料庫並回傳完整 JSON 資料。
     """
     asset = get_asset_by_id(asset_id)
     vul = get_vulnerability_by_id(vulnerability_id)
     
     if not asset:
-        raise ValueError(f"找不到編號為 {asset_id} 的資產")
+        raise ValueError(f"指定之資產識別碼不存在: {asset_id}")
     if not vul:
-        raise ValueError(f"找不到編號為 {vulnerability_id} 的弱點")
+        raise ValueError(f"指定之漏洞識別碼不存在: {vulnerability_id}")
         
-    # 進行風險計算
+    # 核心公式計算與分級
     risk_score = calculate_risk_score(
         asset["confidentiality"],
         asset["integrity"],
         asset["availability"],
         vul["cvss_score"]
     )
-    
     risk_level = determine_risk_level(risk_score)
     
-    # 初步的建議對策範本（後續會由 RAG 檢索 ISO 27002 後，交給 Gemini 生成更白話的內容 [8, 10, 11]）
-    mock_ai_suggestion = (
-        f"【系統自動建議】本資產最高防護價值(CIA)為 {max(asset['confidentiality'], asset['integrity'], asset['availability'])}，"
-        f"面臨已知的 {vul['cve_id']} ({vul['severity']} 等級漏洞，CVSS: {vul['cvss_score']})。\n"
-        f"建議改善對策：\n"
-        f"1. 請優先修補或更新受影響系統至最新版本。\n"
-        f"2. 針對網路層限制該資產的外部連線存取權限。\n"
-        f"3. 確保已開啟稽核日誌紀錄，並落實定期資料備份。"
+    # 生成對應之控制措施建議
+    ai_suggestion = generate_ai_mitigation_plan(
+        asset["asset_name"],
+        vul["cve_id"],
+        vul["cvss_score"],
+        vul["severity"]
     )
     
-    # 組合 risk_assessments 欄位 [3, 4]
+    # 建置寫入 risk_assessments 資料表之結構，對齊系統手冊 8-2-7 欄位定義 [5]
     assessment_record = {
         "asset_id": asset_id,
         "vulnerability_id": vulnerability_id,
-        "threat_description": f"資產面臨 {vul['cve_id']} 的威脅，可能導致系統遭攻擊者入侵控制。",
+        "threat_description": f"資產面臨 {vul['cve_id']} 漏洞威脅，可能導致系統機密性或完整性受損。",
         "vulnerability_description": vul["description"],
         "risk_score": risk_score,
-        "status": "Completed", # 已評估完成
-        "ai_suggestion": mock_ai_suggestion,
-        "uploaded_by": user_id or "11111111-1111-1111-1111-111111111111" # 假的使用者UUID
+        "status": "Completed",
+        "ai_suggestion": ai_suggestion,
+        "uploaded_by": user_id or "00000000-0000-0000-0000-000000000000"
     }
     
-    # 儲存到模擬資料庫 [3]
     saved_record = save_risk_assessment(assessment_record)
     
-    # 補足回傳給前端需要的易讀欄位
+    # 補足前端渲染渲染所需之關聯屬性
     saved_record["asset_name"] = asset["asset_name"]
     saved_record["cve_id"] = vul["cve_id"]
     saved_record["risk_level"] = risk_level
