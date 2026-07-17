@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiskGenie 登入</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+</head>
+<body class="login-page">
+    <main class="login-shell">
+        <section class="login-panel" aria-labelledby="login-title">
+            <div class="brand-mark">RiskGenie</div>
+            <h1 id="login-title">登入作業</h1>
+
+            {% if error %}
+            <div class="login-error" role="alert">{{ error }}</div>
+            {% endif %}
+
+            <form class="login-form" method="post" action="{{ url_for('login') }}">
+                <label for="email">電子郵件</label>
+                <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autocomplete="email"
+                    required
+                    value="{{ request.form.get('email', '') }}"
+                >
+
+                <label for="password">密碼</label>
+                <div class="password-row">
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button class="toggle-password" type="button" aria-controls="password" aria-pressed="false">
+                        顯示
+                    </button>
+                </div>
+
+                <button class="submit-button" type="submit">登入</button>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        const toggleButton = document.querySelector(".toggle-password");
+        const passwordInput = document.getElementById("password");
+
+        toggleButton.addEventListener("click", () => {
+            const isHidden = passwordInput.type === "password";
+            passwordInput.type = isHidden ? "text" : "password";
+            toggleButton.textContent = isHidden ? "隱藏" : "顯示";
+            toggleButton.setAttribute("aria-pressed", String(isHidden));
+        });
+    </script>
+</body>
+</html>

@@ -1,29 +1,31 @@
-# 匯入 MySQL 資料庫模組
+import os
+
 import mysql.connector
 
-# MySQL 連線資訊
-DB_HOST = " "  # MySQL 資料庫的 IP 地址
-DB_NAME = " "  # 資料庫名稱
-DB_USER = " "  # 資料庫使用者名稱
-DB_PASSWORD = " "  # 資料庫密碼
 
-# 建立資料庫連線
+DB_HOST = os.getenv("DB_HOST", " ")
+DB_NAME = os.getenv("DB_NAME", " ")
+DB_USER = os.getenv("DB_USER", " ")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+
+
 def get_connection():
     connection = mysql.connector.connect(
         host=DB_HOST,
         database=DB_NAME,
         user=DB_USER,
-        password=DB_PASSWORD
+        password=DB_PASSWORD,
     )
     return connection
 
-# 測試連接
+
+conn = None
 try:
     conn = get_connection()
-    print("連接成功")
+    print("Database connection succeeded.")
 except mysql.connector.Error as err:
-    print(f"連接失敗: {err}")
+    print(f"Database connection failed: {err}")
 finally:
-    if conn.is_connected():
+    if conn and conn.is_connected():
         conn.close()
-        print("連接已關閉")
+        print("Database connection closed.")

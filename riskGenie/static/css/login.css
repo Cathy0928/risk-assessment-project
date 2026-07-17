@@ -1,0 +1,97 @@
+* {
+    box-sizing: border-box;
+}
+
+body.login-page {
+    min-height: 100vh;
+    margin: 0;
+    background: #f4f6f8;
+    color: #1f2933;
+    font-family: "Microsoft JhengHei", Arial, sans-serif;
+}
+
+.login-shell {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.login-panel {
+    width: 100%;
+    max-width: 420px;
+    padding: 32px;
+    background: #ffffff;
+    border: 1px solid #d9e2ec;
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.brand-mark {
+    margin-bottom: 12px;
+    color: #334e68;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.login-panel h1 {
+    margin: 0 0 24px;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.login-error {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid #f5c2c7;
+    border-radius: 6px;
+    background: #f8d7da;
+    color: #842029;
+}
+
+.login-form {
+    display: grid;
+    gap: 10px;
+}
+
+.login-form label {
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.login-form input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #bcccdc;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+.password-row {
+    display: grid;
+    grid-template-columns: 1fr 72px;
+    gap: 8px;
+    align-items: center;
+}
+
+.toggle-password,
+.submit-button {
+    min-height: 44px;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.toggle-password {
+    background: #d9e2ec;
+    color: #243b53;
+}
+
+.submit-button {
+    margin-top: 12px;
+    background: #2563eb;
+    color: #ffffff;
+}

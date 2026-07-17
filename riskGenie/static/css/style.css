@@ -110,3 +110,28 @@ body {
     background-color: #ffffff;
     font-weight: bold;
 }
+
+.menu-footer form {
+    margin: 0;
+}
+
+.session-user {
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.session-user span,
+.session-user small {
+    display: block;
+}
+
+.session-user small {
+    margin-top: 4px;
+    opacity: 0.8;
+}
+
+.logout-btn {
+    color: #ffe4e6;
+}

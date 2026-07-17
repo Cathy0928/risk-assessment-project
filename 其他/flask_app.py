@@ -1,8 +1,12 @@
+import os
+
 from flask import Flask, render_template, request, jsonify
 from engine.decision_support import get_rag_advice
 
 app = Flask(__name__)
-app.secret_key = "your_unique_secret_key"
+app.secret_key = os.getenv("FLASK_SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError("Missing FLASK_SECRET_KEY environment variable.")
 
 
 @app.route("/")
