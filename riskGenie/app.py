@@ -38,11 +38,17 @@ except Exception:  # Allows UC1 auth to run even if legacy risk modules are unav
     def perform_asset_risk_assessment(*args, **kwargs):
         raise RuntimeError("Risk assessment service is unavailable.")
 
+try:
+    from .services import admin_service
+except ImportError:  # Allows `python app.py` from inside riskGenie/.
+    from services import admin_service
+
 
 REQUIRED_ENV_VARS = ("FLASK_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY")
 ROLE_REDIRECTS = {}
 DEFAULT_LOGIN_ENDPOINT = "home"
 LOGIN_ERROR_MESSAGE = "電子郵件或密碼錯誤"
+ADMIN_ROLE_NAME = "系統管理員"
 
 
 def _get_response_data(response):
@@ -86,6 +92,18 @@ def login_required(view_func):
     def wrapped(*args, **kwargs):
         if not session.get("logged_in"):
             return redirect(url_for("login"))
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not session.get("logged_in"):
+            return jsonify({"error": "Unauthorized"}), 401
+        if session.get("role_name") != ADMIN_ROLE_NAME:
+            return jsonify({"error": "Forbidden"}), 403
         return view_func(*args, **kwargs)
 
     return wrapped
@@ -213,6 +231,22 @@ def create_app(test_config=None):
                 "company_id": session.get("company_id"),
             }
         )
+
+    @app.route("/api/admin/roles", methods=["GET"])
+    @admin_required
+    def api_admin_roles():
+        try:
+            return jsonify({"roles": admin_service.list_roles()})
+        except Exception:
+            return jsonify({"error": "Unable to load roles"}), 503
+
+    @app.route("/api/admin/users", methods=["GET"])
+    @admin_required
+    def api_admin_users():
+        try:
+            return jsonify({"users": admin_service.list_users()})
+        except Exception:
+            return jsonify({"error": "Unable to load users"}), 503
 
     @app.route("/summary")
     def asset_summary():
