@@ -1,0 +1,306 @@
+/* =========================
+   新增資產頁面樣式
+   ========================= */
+
+
+/* 右側主要區域 */
+.main-content {
+
+    min-height: 100vh;
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: flex-start;
+
+    padding: 40px;
+
+    background: #f5f6fa;
+
+}
+
+
+/* 表單卡片 */
+
+.form-card {
+
+    width: 750px;
+
+    background: #ffffff;
+
+    border-radius: 15px;
+
+    padding: 35px 45px;
+
+    box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+
+}
+
+
+/* 標題 */
+
+.form-card h2 {
+
+    text-align: center;
+
+    margin-bottom: 30px;
+
+    font-size: 28px;
+
+    color: #333;
+
+}
+
+
+/* 每一列 */
+
+.form-group {
+
+    display: flex;
+
+    align-items: center;
+
+    margin-bottom: 18px;
+
+}
+
+
+/* 欄位名稱 */
+
+.form-group label {
+
+    width: 180px;
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    color: #333;
+
+}
+
+
+/* 必填符號 */
+
+.required {
+
+    color: red;
+
+    margin-left: 3px;
+
+}
+
+
+/* 輸入框 */
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+
+    flex: 1;
+
+    padding: 10px 12px;
+
+    font-size: 15px;
+
+    border: 1px solid #ccc;
+
+    border-radius: 8px;
+
+    outline: none;
+
+    box-sizing: border-box;
+
+}
+
+
+/* 滑鼠點擊 */
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+
+    border-color: #5b8def;
+
+}
+
+
+/* 唯讀欄位 */
+
+.form-group input[readonly] {
+
+    background-color: #eeeeee;
+
+    color: #666;
+
+}
+
+
+/* textarea */
+
+.form-group textarea {
+
+    resize: vertical;
+
+}
+
+
+/* 描述欄位 */
+
+.textarea-group {
+
+    align-items: flex-start;
+
+}
+
+
+/* 分隔線 */
+
+hr {
+
+    border: none;
+
+    border-top: 1px solid #ddd;
+
+    margin: 25px 0;
+
+}
+
+
+/* 按鈕區 */
+
+.button-group {
+
+    display: flex;
+
+    justify-content: center;
+
+    gap: 30px;
+
+    margin-top: 35px;
+
+}
+
+
+/* 確認新增 */
+
+.confirm-btn {
+
+    width: 130px;
+
+    height: 45px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    background-color: #4a90e2;
+
+    color: white;
+
+    font-size: 16px;
+
+    cursor: pointer;
+
+}
+
+
+/* 取消 */
+
+.cancel-btn {
+
+    width: 130px;
+
+    height: 45px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    background-color: #999;
+
+    color: white;
+
+    font-size: 16px;
+
+    cursor: pointer;
+
+}
+
+
+/* 按鈕滑過 */
+
+.confirm-btn:hover {
+
+    background-color: #357abd;
+
+}
+
+
+.cancel-btn:hover {
+
+    background-color: #777;
+
+}
+
+
+/* 下拉選單 */
+
+select {
+
+    cursor: pointer;
+
+}
+/* ===========================
+   刪除資產按鈕
+=========================== */
+
+.delete-btn {
+
+    background:#e74c3c;
+
+    color:white;
+
+    border:none;
+
+    padding:10px 30px;
+
+    font-size:18px;
+
+    border-radius:10px;
+
+    cursor:pointer;
+
+}
+
+
+.delete-btn:hover {
+
+    background:#c0392b;
+
+}
+
+
+
+/* ===========================
+   唯讀欄位樣式
+=========================== */
+
+input[readonly],
+textarea[readonly] {
+
+    background:#eeeeee;
+
+    color:#555;
+
+    cursor:not-allowed;
+
+}
+
+
+textarea[readonly] {
+
+    resize:none;
+
+}
