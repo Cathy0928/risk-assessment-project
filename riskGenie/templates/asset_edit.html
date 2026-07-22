@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <title>編輯資產 - Genie 資安管理系統</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/asset_add.css') }}">
+</head>
+
+<body>
+
+    <!-- 左側選單 -->
+    <div class="sidebar">
+        <div class="sidebar-title">👤 Genie</div>
+
+        <a href="/">
+            <button class="menu-btn">首頁</button>
+        </a>
+
+        <a href="/summary">
+            <button class="menu-btn">資產總表</button>
+        </a>
+
+        <button class="menu-btn">風險評鑑</button>
+        <button class="menu-btn">權重設定</button>
+        <button class="menu-btn">AI建議</button>
+        <button class="menu-btn">建議報表</button>
+        <button class="menu-btn">帳號管理</button>
+
+        <div class="menu-footer">
+            <button class="menu-btn">⚙️ 設定</button>
+        </div>
+    </div>
+
+    <!-- 右側內容 -->
+    <div class="main-content">
+
+        <div class="form-card">
+
+            <h2>編輯資產</h2>
+            {% if error %}
+            <div class="error-message">
+                {{ error }}
+            </div>
+            {% endif %}
+            <form method="POST" action="{{ url_for('asset_edit', id=asset_id) }}">
+
+                <div class="form-group">
+                    <label>建立時間</label>
+                    <input type="text" value="{{ asset.created_at }}" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>上傳者</label>
+                    <input type="text" value="{{ asset.upload_user }}" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label>建立時間</label>
+                    <input type="text" value="{{ asset.created_at }}" readonly>
+                </div>
+
+                <hr>
+
+                <div class="form-group">
+                    <label>資產代碼</label>
+                    <input type="text" name="asset_id_code" value="{{ asset.asset_id_code }}">
+                </div>
+
+                <div class="form-group">
+                    <label>資產名稱 <span class="required">*</span></label>
+                    <input type="text" name="asset_name" value="{{ asset.asset_name }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label>資產類型 <span class="required">*</span></label>
+
+                    <select name="asset_type">
+
+                    <option value="">請選擇</option>
+
+                    <option value="DA"
+                        {% if asset.asset_type=="DA" %}selected{% endif %}>
+                        DA－資料(Data)
+                    </option>
+
+                    <option value="DC"
+                        {% if asset.asset_type=="DC" %}selected{% endif %}>
+                        DC－文件(Document)
+                    </option>
+
+                    <option value="CM"
+                        {% if asset.asset_type=="CM" %}selected{% endif %}>
+                        CM－通訊(Communication)
+                    </option>
+
+                    <option value="HW"
+                        {% if asset.asset_type=="HW" %}selected{% endif %}>
+                        HW－硬體(Hardware)
+                    </option>
+
+                    <option value="SW"
+                        {% if asset.asset_type=="SW" %}selected{% endif %}>
+                        SW－軟體(Software)
+                    </option>
+
+                    <option value="EV"
+                        {% if asset.asset_type=="EV" %}selected{% endif %}>
+                        EV－設備(Environment)
+                    </option>
+
+                    <option value="PE"
+                        {% if asset.asset_type=="PE" %}selected{% endif %}>
+                        PE－人員(Person)
+                    </option>
+
+                </select>
+                </div>
+
+                <div class="form-group">
+                    <label>資料類型</label>
+
+                    <select name="data_type">
+
+                    <option value="一般資料"
+                    {% if asset.data_type=="一般資料" %}selected{% endif %}>
+                    一般資料
+                    </option>
+
+
+                    <option value="個人資料"
+                    {% if asset.data_type=="個人資料" %}selected{% endif %}>
+                    個人資料
+                    </option>
+
+
+                    <option value="敏感資料"
+                    {% if asset.data_type=="敏感資料" %}selected{% endif %}>
+                    敏感資料
+                    </option>
+
+
+                    <option value="機密資料"
+                    {% if asset.data_type=="機密資料" %}selected{% endif %}>
+                    機密資料
+                    </option>
+
+
+                    <option value="其他"
+                    {% if asset.data_type=="其他" %}selected{% endif %}>
+                    其他
+                    </option>
+
+
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>權責單位</label>
+                    <input type="text"
+                           name="department"
+                           value="{{ asset.department }}">
+                </div>
+
+                <div class="form-group">
+                    <label>保管單位(風險擁有者)</label>
+                    <input type="text"
+                           name="risk_owner"
+                           value="{{ asset.risk_owner }}">
+                </div>
+
+                <div class="form-group">
+                    <label>使用單位</label>
+                    <input type="text"
+                           name="use_department"
+                           value="{{ asset.use_department }}">
+                </div>
+
+                <div class="form-group">
+                    <label>放置地點</label>
+                    <input type="text"
+                           name="location"
+                           value="{{ asset.location }}">
+                </div>
+
+                <div class="form-group textarea-group">
+                    <label>資產描述 <span class="required">*</span></label>
+                    <textarea name="description" rows="5" required>{{ asset.description }}</textarea>
+                </div>
+
+                <div class="form-group">
+                <label>機密性(C)</label>
+
+                <select
+                    name="confidentiality"
+                    id="confidentiality"
+                    onchange="updateAssetValue()">
+
+                    {% for i in range(1,6) %}
+                    <option value="{{ i }}"
+                        {% if asset.confidentiality == i %}selected{% endif %}>
+                        {{ i }}
+                    </option>
+                    {% endfor %}
+
+                </select>
+            </div>
+            
+                <div class="form-group">
+            <label>完整性(I)</label>
+
+            <select
+            name="integrity"
+            id="integrity"
+            onchange="updateAssetValue()">
+
+            {% for i in range(1,6) %}
+            <option value="{{ i }}"
+            {% if asset.integrity == i %}selected{% endif %}>
+            {{ i }}
+            </option>
+            {% endfor %}
+
+            </select>
+            </div>
+            <div class="form-group">
+            <label>可用性(A)</label>
+
+            <select
+            name="availability"
+            id="availability"
+            onchange="updateAssetValue()">
+
+            {% for i in range(1,6) %}
+            <option value="{{ i }}"
+            {% if asset.availability == i %}selected{% endif %}>
+            {{ i }}
+            </option>
+            {% endfor %}
+
+            </select>
+            </div>
+
+
+            <div class="form-group">
+            <label>適法性(L)</label>
+
+            <select
+            name="legality"
+            id="legality"
+            onchange="updateAssetValue()">
+
+            {% for i in range(1,6) %}
+            <option value="{{ i }}"
+            {% if asset.legality == i %}selected{% endif %}>
+            {{ i }}
+            </option>
+            {% endfor %}
+
+            </select>
+            </div>
+                           
+
+            <div class="form-group">
+            <label>資產價值</label>
+
+            <input
+                type="text"
+                id="asset_value"
+                name="asset_value"
+                value="{{ asset.asset_value }}"
+                readonly>
+        </div>
+
+                <div class="button-group">
+
+                    <button type="submit" class="confirm-btn">
+                         確認修改
+                    </button>
+
+                    <a href="/summary">
+                        <button type="button" class="cancel-btn">
+                            取消
+                        </button>
+                    </a>
+
+                </div>
+
+            </form>
+            <script>
+
+            function updateAssetValue() {
+
+                const c = parseInt(document.getElementById("confidentiality").value);
+                const i = parseInt(document.getElementById("integrity").value);
+                const a = parseInt(document.getElementById("availability").value);
+                const l = parseInt(document.getElementById("legality").value);
+
+                const maxValue = Math.max(c, i, a, l);
+
+                document.getElementById("asset_value").value = maxValue;
+            }
+
+            window.onload = updateAssetValue;
+
+            </script>
+        </div>
+
+    </div>
+
+</body>
+
+</html>
