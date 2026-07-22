@@ -3,62 +3,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RiskGenie</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
-</head>
-<body>
-    <aside class="sidebar">
-        <div class="sidebar-title">RiskGenie</div>
-        <a href="/"><button class="menu-btn active">首頁</button></a>
-        <a href="/summary"><button class="menu-btn">資產總覽</button></a>
-        <a href="/assess"><button class="menu-btn">風險評鑑</button></a>
-        <button class="menu-btn">控制項管理</button>
-        <button class="menu-btn">改善建議</button>
-        <button class="menu-btn">報表</button>
-        <div class="menu-footer">
-            <div class="session-user">
-                <span>{{ session.get("username", "使用者") }}</span>
-                <small>{{ session.get("role_name", "未設定角色") }}</small>
-            </div>
-            <form method="post" action="{{ url_for('logout') }}">
-                <button class="menu-btn logout-btn" type="submit">登出</button>
-            </form>
-        </div>
-    </aside>
+    <title>RiskGenie 資安管理系統</title>
 
-    <main class="main-content">
-        <div class="content-wrapper">
-            <div class="upload-box">上傳資產資料表 (.xlsx)</div>
-            <div class="action-bar"><button class="add-btn">+ 新增資產</button></div>
-            <table class="asset-table-simple">
-                <thead>
-                    <tr>
-                        <th>編號</th>
-                        <th>資產名稱</th>
-                        <th>擁有者</th>
-                        <th>機密性</th>
-                        <th>完整性</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>1</td>
-                        <td>A</td>
-                        <td>Team A</td>
-                        <td>A</td>
-                        <td>A</td>
-                    </tr>
-                    <tr>
-                        <td>2</td>
-                        <td>B</td>
-                        <td>Team B</td>
-                        <td>B</td>
-                        <td>B</td>
-                    </tr>
-                </tbody>
-            </table>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/index.css') }}">
+</head>
+
+<body>
+
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        RiskGenie
+    </div>
+
+    <a href="{{ url_for('home') }}">
+        <button class="menu-btn active">首 頁</button>
+    </a>
+
+    <a href="{{ url_for('asset_summary') }}">
+        <button class="menu-btn">資產總表</button>
+    </a>
+
+    <button class="menu-btn">風險評鑑</button>
+    <button class="menu-btn">權重設定</button>
+    <button class="menu-btn">AI建議</button>
+    <button class="menu-btn">建議報表</button>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+
+        <div class="session-user">
+            <strong>{{ session.get("username","使用者") }}</strong><br>
+            {{ session.get("role_name","") }}
         </div>
-    </main>
+
+        <form action="{{ url_for('logout') }}" method="post">
+            <button class="menu-btn logout-btn" type="submit">
+                登出
+            </button>
+        </form>
+
+    </div>
+
+</div>
+
+<div class="main-content">
+
+    <div class="content-wrapper">
+
+        <div class="upload-box">
+
+            <h2>上傳資產清單 (.xlsx)</h2>
+
+            <form action="{{ url_for('upload_excel') }}"
+                  method="post"
+                  enctype="multipart/form-data">
+
+                <input
+                    type="file"
+                    name="file"
+                    accept=".xlsx"
+                    required>
+
+                <br><br>
+
+                <button class="add-btn" type="submit">
+                    匯入資產
+                </button>
+
+            </form>
+
+            <br>
+
+            <a href="{{ url_for('download_template') }}">
+                <button class="add-btn" type="button">
+                    📄 下載資產匯入範本
+                </button>
+            </a>
+
+        </div>
+
+        <div class="table-header">
+
+            <h3 class="table-title">
+                最近新增資產
+            </h3>
+
+            <a href="{{ url_for('asset_add') }}">
+                <button class="add-btn">
+                    ＋ 新增資產
+                </button>
+            </a>
+
+        </div>
+
+        <div class="table-container">
+
+            <table class="asset-table-simple">
+
+                <thead>
+
+                <tr>
+
+                    <th>資產代碼</th>
+                    <th>資產類型</th>
+                    <th>資料類型</th>
+                    <th>資產名稱</th>
+                    <th>資產描述</th>
+                    <th>權責單位</th>
+                    <th>保管單位</th>
+                    <th>使用單位</th>
+                    <th>放置地點</th>
+                    <th>C</th>
+                    <th>I</th>
+                    <th>A</th>
+                    <th>L</th>
+                    <th>資產價值</th>
+                    <th>上傳者</th>
+                    <th>建立時間</th>
+
+                </tr>
+
+                </thead>
+
+                <tbody>
+
+                {% for asset in assets %}
+
+                <tr>
+
+                    <td>{{ asset.asset_id_code }}</td>
+
+                    <td>{{ asset.asset_type }}</td>
+
+                    <td>{{ asset.data_type }}</td>
+
+                    <td>{{ asset.asset_name }}</td>
+
+                    <td>{{ asset.description }}</td>
+
+                    <td>{{ asset.department }}</td>
+
+                    <td>{{ asset.risk_owner }}</td>
+
+                    <td>{{ asset.use_department }}</td>
+
+                    <td>{{ asset.location }}</td>
+
+                    <td>{{ asset.confidentiality }}</td>
+
+                    <td>{{ asset.integrity }}</td>
+
+                    <td>{{ asset.availability }}</td>
+
+                    <td>{{ asset.legality }}</td>
+
+                    <td>{{ asset.asset_value }}</td>
+
+                    <td>{{ asset.upload_user }}</td>
+
+                    <td>{{ asset.created_at }}</td>
+
+                </tr>
+
+                {% else %}
+
+                <tr>
+
+                    <td colspan="16">
+
+                        目前尚無資產資料
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
 </body>
+
 </html>
