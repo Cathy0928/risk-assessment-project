@@ -36,3 +36,130 @@
     text-align: center;
     font-size: 18px;
 }
+/* 最近新增資產 */
+
+.table-title{
+
+    margin-top:30px;
+
+    margin-bottom:15px;
+
+    font-size:22px;
+
+    font-weight:bold;
+
+}
+
+
+/* 可左右捲動 */
+
+.table-container{
+
+    width:100%;
+
+    overflow-x:auto;
+
+}
+
+
+/* 表格 */
+
+.asset-table-simple{
+
+    width:max-content;
+
+    min-width:100%;
+
+    border-collapse:collapse;
+
+    background:white;
+
+}
+
+
+/* 標題 */
+
+.asset-table-simple th{
+
+    background:#4a90e2;
+
+    color:white;
+
+    padding:12px;
+
+    border:1px solid #ddd;
+
+    white-space:nowrap;
+
+}
+
+
+/* 內容 */
+
+.asset-table-simple td{
+
+    padding:10px;
+
+    border:1px solid #ddd;
+
+    text-align:center;
+
+    white-space:nowrap;
+
+}
+
+
+/* 隔行變色 */
+
+.asset-table-simple tbody tr:nth-child(even){
+
+    background:#f7f7f7;
+
+}
+
+
+/* 滑鼠移上去 */
+
+.asset-table-simple tbody tr:hover{
+
+    background:#eef5ff;
+
+}
+
+.table-header{
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+
+    margin-bottom:15px;
+
+}
+
+
+.add-btn{
+
+    background:#4CAF50;
+
+    color:white;
+
+    border:none;
+
+    padding:10px 18px;
+
+    border-radius:8px;
+
+    cursor:pointer;
+
+    font-size:15px;
+
+}
+
+
+.add-btn:hover{
+
+    opacity:0.85;
+
+}

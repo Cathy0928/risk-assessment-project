@@ -1,60 +1,243 @@
 /* static/css/asset_summary.css */
-.page-title {
-    text-align: center;
-    font-size: 32px;
-    font-weight: 500;
-    margin-bottom: 30px;
-    color: #000000;
+.page-title{
+
+    text-align:center;
+
+    font-size:32px;
+
+    margin-bottom:30px;
+
+}
+/* ===========================
+   白色內容卡片
+=========================== */
+
+.summary-card{
+
+    background:#fff;
+
+    padding:30px;
+    
+    width:100%;
+
+    border-radius:12px;
+
+    box-shadow:0 2px 10px rgba(0,0,0,.08);
+
 }
 
-.asset-table {
-    width: 100%;
-    border-collapse: collapse;
+/* ===========================
+   查詢區
+=========================== */
+
+.search-box{
+
+    width:100%;
+
+    display:flex;
+
+    gap:20px;
+
+    flex-wrap:wrap;
+
+    align-items:flex-end;
+
+    margin-bottom:30px;
+
+}
+.search-item{
+
+    display:flex;
+
+    flex-direction:column;
+
+    width:220px;
+
 }
 
-.asset-table th, .asset-table td {
-    border: 1px solid #000000;
-    padding: 10px;
-    text-align: center;
-    font-size: 18px;
+.search-item label{
+    margin-bottom:6px;
+    font-weight:bold;
 }
 
-.asset-table th {
-    background-color: #ffffff;
-    font-weight: bold;
+.search-item input,
+.search-item select{
+
+    width:220px;
+    padding:10px;
+
+    border:1px solid #ccc;
+
+    border-radius:6px;
+
+    font-size:15px;
+
 }
 
-/* ✏️ 編輯欄位 */
-.asset-table td.edit-cell {
-    border: none;
-    cursor: pointer;
-    font-size: 18px;
-    text-align: center;
-    padding-left: 15px;
-    transition: transform 0.1s;
+.search-btn-group{
+
+    display:flex;
+
+    gap:10px;
+
 }
 
-.asset-table td.edit-cell:hover {
-    transform: scale(1.2);
+.search-btn,
+.reset-btn{
+
+    padding:10px 22px;
+
+    border:none;
+
+    border-radius:6px;
+
+    cursor:pointer;
+
+    color:white;
+
 }
 
-/* 下方圓角按鈕 */
+.search-btn{
+
+    background:#2d8cf0;
+
+}
+
+.search-btn:hover{
+
+    background:#1976d2;
+
+}
+
+.reset-btn{
+
+    background:#777;
+
+}
+
+.reset-btn:hover{
+
+    background:#555;
+
+}
+
+/* ===========================
+   表格
+=========================== */
+
+.table-container{
+
+    width:100%;
+
+    overflow-x:auto;
+
+}
+.asset-table{
+
+    width:100%;
+
+    min-width:2200px;
+
+    border-collapse:collapse;
+
+}
+/* ===========================
+   表格文字
+=========================== */
+.asset-table th{
+
+    background:#2d8cf0;
+
+    color:white;
+
+}
+
+.asset-table th,
+.asset-table td{
+
+    border:1px solid #ddd;
+
+    padding:10px;
+
+    text-align:center;
+
+    white-space:nowrap;
+
+    font-size:15px;
+
+}
+
+.asset-table th{
+
+    background:#2d8cf0;
+
+    color:white;
+
+}
+
+.asset-table tbody tr:hover{
+
+    background:#eef6ff;
+
+}
+
+}
+
+/* ===========================
+   操作按鈕
+=========================== */
+.operation-btn{
+
+    display:inline-block;
+
+    padding:6px 12px;
+
+    margin:2px;
+
+    border-radius:6px;
+
+    text-decoration:none;
+
+    color:white;
+
+}
+.edit-btn{
+
+    background:#2d8cf0;
+
+}
+
+.edit-btn:hover{
+
+    background:#1976d2;
+
+}
+
+.delete-btn{
+
+    background:#e74c3c;
+
+}
+.delete-btn:hover{
+
+    background:#c0392b;
+
+}
 .bottom-action {
-    text-align: center;
-    margin-top: 40px;
+    text-align:center;
+    margin-top:40px;
 }
 
 .check-btn {
-    background-color: #ffffff;
-    border: 1px solid #000000;
-    color: #000000;
-    padding: 10px 30px;
-    font-size: 20px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: background 0.2s;
+    background-color:#ffffff;
+    border:1px solid #000000;
+    color:#000000;
+    padding:10px 30px;
+    font-size:20px;
+    border-radius:12px;
+    cursor:pointer;
 }
 
 .check-btn:hover {
-    background-color: #f0f0f0;
+    background-color:#f0f0f0;
 }
