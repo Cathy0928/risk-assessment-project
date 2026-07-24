@@ -199,7 +199,8 @@ def create_app():
         ).insert(
             log
         ).execute()
-            # ===============================
+
+    # ===============================
     # 首頁
     # ===============================
 
@@ -568,7 +569,8 @@ def create_app():
         return render_template(
             "asset_add.html"
         )
-            # ===============================
+
+    # ===============================
     # 資產總表
     # ===============================
 
@@ -910,8 +912,18 @@ def create_app():
         )
 
 
+    # ===============================
+    # 權重設定 (💡 已移至 create_app 內部，並補上 @login_required)
+    # ===============================
+    @app.route('/weight-setting')
+    @login_required
+    def weight_setting():
+        return render_template('weight_setting.html')
+
 
     return app
+
+
 app = create_app()
 print(app.url_map)
 
