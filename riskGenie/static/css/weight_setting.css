@@ -1,0 +1,99 @@
+/* static/css/weight_setting.css */
+
+.page-title {
+    text-align: center;
+    font-size: 32px;
+    font-weight: 500;
+    margin-bottom: 50px;
+    color: #000000;
+}
+
+.weight-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.method-group {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    width: 100%;
+    max-width: 650px;
+}
+
+.method-row {
+    display: flex;
+    align-items: center;
+}
+
+.method-btn {
+    width: 180px;
+    padding: 12px 0;
+    font-size: 22px;
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.method-btn.active {
+    background-color: #d1d1d1;
+}
+
+.method-btn:hover {
+    background-color: #e2e2e2;
+}
+
+.weighted-row {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+}
+
+.inputs-inline {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    font-size: 22px;
+}
+
+.inputs-inline label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.underline-input {
+    width: 60px;
+    border: none;
+    border-bottom: 1.5px solid #000000;
+    background: transparent;
+    outline: none;
+    text-align: center;
+    font-size: 20px;
+    padding-bottom: 2px;
+}
+
+.save-action {
+    margin-top: 60px;
+    text-align: center;
+}
+
+.save-btn {
+    width: 130px;
+    padding: 8px 0;
+    font-size: 20px;
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.save-btn:hover {
+    background-color: #f0f0f0;
+}

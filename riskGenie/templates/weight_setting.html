@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>權重設定</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/weight_setting.css') }}">
+</head>
+<body>
+
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        RiskGenie
+    </div>
+
+    <a href="{{ url_for('home') }}">
+        <button class="menu-btn">首 頁</button>
+    </a>
+
+    <a href="{{ url_for('asset_summary') }}">
+        <button class="menu-btn">資產總表</button>
+    </a>
+
+    <button class="menu-btn">風險評鑑</button>
+    <button class="menu-btn active">權重設定</button>
+    <button class="menu-btn">AI建議</button>
+    <button class="menu-btn">建議報表</button>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+
+        <div class="session-user">
+            <strong>{{ session.get("username","使用者") }}</strong><br>
+            {{ session.get("role_name","") }}
+        </div>
+
+        <form action="{{ url_for('logout') }}" method="post">
+            <button class="menu-btn logout-btn" type="submit">
+                登出
+            </button>
+        </form>
+
+    </div>
+
+</div>
+
+<div class="main-content">
+
+    <div class="content-wrapper">
+
+        <h1 class="page-title">權重設定</h1>
+
+        <form action="#" method="post" class="weight-form">
+
+            <div class="method-group">
+                
+                <div class="method-row">
+                    <button type="button" class="method-btn active">最大值</button>
+                </div>
+
+                <div class="method-row">
+                    <button type="button" class="method-btn">總合法</button>
+                </div>
+
+                <div class="method-row">
+                    <button type="button" class="method-btn">平均法</button>
+                </div>
+
+                <div class="method-row weighted-row">
+                    <button type="button" class="method-btn">加權平均法</button>
+
+                    <div class="inputs-inline">
+                        <label>C : <input type="text" name="weight_c" class="underline-input"></label>
+                        <label>I : <input type="text" name="weight_i" class="underline-input"></label>
+                        <label>A : <input type="text" name="weight_a" class="underline-input"></label>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="save-action">
+                <button type="submit" class="save-btn">儲存</button>
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+</body>
+</html>
