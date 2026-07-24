@@ -29,7 +29,12 @@
     </a>
 
     <button class="menu-btn">風險評鑑</button>
-    <button class="menu-btn">權重設定</button>
+
+    <!-- 💡 已更新：新增權重設定超連結 -->
+    <a href="{{ url_for('weight_setting') }}">
+        <button class="menu-btn">權重設定</button>
+    </a>
+
     <button class="menu-btn">AI建議</button>
     <button class="menu-btn">建議報表</button>
     <button class="menu-btn">帳號管理</button>
@@ -71,19 +76,21 @@
 
                 <br><br>
 
-                <button class="add-btn" type="submit">
-                    匯入資產
-                </button>
+                <div class="btn-group" style="display: flex; justify-content: center; align-items: center; gap: 15px;">
+
+                    <button class="add-btn" type="submit" style="white-space: nowrap;">
+                        匯入資產
+                    </button>
+
+                    <a href="{{ url_for('download_template') }}">
+                        <button class="add-btn" type="button" style="white-space: nowrap;">
+                            📄 下載資產匯入範本
+                        </button>
+                    </a>
+
+                </div>
 
             </form>
-
-            <br>
-
-            <a href="{{ url_for('download_template') }}">
-                <button class="add-btn" type="button">
-                    📄 下載資產匯入範本
-                </button>
-            </a>
 
         </div>
 

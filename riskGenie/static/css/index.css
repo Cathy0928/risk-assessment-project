@@ -1,6 +1,6 @@
 /* static/css/index.css */
 .upload-box {
-    border: 2px dashed #4A4A8A;
+    border: 2px dashed #757575;
     padding: 60px 40px;
     text-align: center;
     background-color: #ffffff;
@@ -81,7 +81,7 @@
 
 .asset-table-simple th{
 
-    background:#4a90e2;
+    background:#757575;
 
     color:white;
 
@@ -141,7 +141,7 @@
 
 .add-btn{
 
-    background:#4CAF50;
+    background:#757575;
 
     color:white;
 

@@ -99,13 +99,13 @@
 
 .search-btn{
 
-    background:#2d8cf0;
+    background:#757575;
 
 }
 
 .search-btn:hover{
 
-    background:#1976d2;
+    background:#757575;
 
 }
 
@@ -146,7 +146,7 @@
 =========================== */
 .asset-table th{
 
-    background:#2d8cf0;
+    background:#757575;
 
     color:white;
 
@@ -169,7 +169,7 @@
 
 .asset-table th{
 
-    background:#2d8cf0;
+    background:#757575;
 
     color:white;
 
@@ -178,8 +178,6 @@
 .asset-table tbody tr:hover{
 
     background:#eef6ff;
-
-}
 
 }
 
