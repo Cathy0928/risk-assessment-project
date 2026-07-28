@@ -1,6 +1,7 @@
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,14 +32,37 @@ def client(app):
     return app.test_client()
 
 
-def login_as(client, role_name):
+@pytest.fixture(autouse=True)
+def mock_audit_log(app_module, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "write_audit_log",
+        lambda **kwargs: calls.append(kwargs),
+    )
+    return calls
+
+
+def login_as(client, role_name, user_id="user-id"):
     with client.session_transaction() as sess:
         sess["logged_in"] = True
-        sess["user_id"] = "user-id"
+        sess["user_id"] = user_id
         sess["username"] = "Peggy"
         sess["email"] = "peggy@example.com"
         sess["role_name"] = role_name
         sess["company_id"] = 7
+
+
+def new_user_payload(**overrides):
+    payload = {
+        "username": "new_user",
+        "email": "user@example.com",
+        "password": "Password123!",
+        "role_id": "role-uuid",
+        "company_id": 1,
+    }
+    payload.update(overrides)
+    return payload
 
 
 def test_admin_roles_requires_login(client):
@@ -101,3 +125,426 @@ def test_admin_roles_database_error_returns_503(client, app_module, monkeypatch)
 
     assert response.status_code == 503
     assert response.get_json() == {"error": "Unable to load roles"}
+
+
+def test_create_user_requires_login(client):
+    response = client.post("/api/admin/users", json=new_user_payload())
+
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "Unauthorized"}
+
+
+def test_create_user_forbids_non_admin(client):
+    login_as(client, "一般使用者")
+
+    response = client.post("/api/admin/users", json=new_user_payload())
+
+    assert response.status_code == 403
+    assert response.get_json() == {"error": "Forbidden"}
+
+
+def test_create_user_missing_field_returns_400(client, mock_audit_log):
+    login_as(client, "系統管理員")
+    payload = new_user_payload()
+    del payload["username"]
+
+    response = client.post("/api/admin/users", json=payload)
+
+    assert response.status_code == 400
+    assert response.get_json()["field"] == "username"
+    assert mock_audit_log[-1]["action"] == "CREATE_USER"
+    assert mock_audit_log[-1]["status"] == "failed"
+
+
+def test_create_user_rejects_invalid_email(client):
+    login_as(client, "系統管理員")
+
+    response = client.post(
+        "/api/admin/users",
+        json=new_user_payload(email="not-an-email"),
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["field"] == "email"
+
+
+def test_create_user_rejects_short_password(client):
+    login_as(client, "系統管理員")
+
+    response = client.post(
+        "/api/admin/users",
+        json=new_user_payload(password="short"),
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["field"] == "password"
+
+
+def test_create_user_rejects_missing_company(client, app_module, monkeypatch):
+    def raise_company_not_found(**_kwargs):
+        raise app_module.admin_service.CompanyNotFoundError()
+
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "create_user",
+        raise_company_not_found,
+    )
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users", json=new_user_payload())
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Company does not exist."}
+
+
+def test_create_user_duplicate_email_returns_409(client, app_module, monkeypatch):
+    def raise_duplicate(**_kwargs):
+        raise app_module.admin_service.DuplicateEmailError()
+
+    monkeypatch.setattr(app_module.admin_service, "create_user", raise_duplicate)
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users", json=new_user_payload())
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "Email is already in use."}
+
+
+def test_create_user_success_returns_201(
+    client, app_module, monkeypatch, mock_audit_log
+):
+    created_user = {
+        "id": "auth-created-id",
+        "username": "new_user",
+        "email": "user@example.com",
+        "role_id": "role-uuid",
+        "company_id": 1,
+    }
+    received = {}
+
+    def create_user(**payload):
+        received.update(payload)
+        return created_user
+
+    monkeypatch.setattr(app_module.admin_service, "create_user", create_user)
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users", json=new_user_payload())
+
+    assert response.status_code == 201
+    assert response.get_json() == {"user": created_user}
+    assert received["password"] == "Password123!"
+    assert "password" not in response.get_json()["user"]
+    assert mock_audit_log[-1]["action"] == "CREATE_USER"
+    assert mock_audit_log[-1]["status"] == "success"
+
+
+def test_create_user_uses_auth_id_for_profile(app_module, monkeypatch):
+    auth_calls = []
+    inserted_profiles = []
+
+    class FakeAuthAdmin:
+        def create_user(self, attributes):
+            auth_calls.append(attributes)
+            return SimpleNamespace(user=SimpleNamespace(id="auth-created-id"))
+
+        def delete_user(self, _user_id):
+            raise AssertionError("Compensation should not run on success.")
+
+    fake_client = SimpleNamespace(auth=SimpleNamespace(admin=FakeAuthAdmin()))
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "get_supabase_admin_client",
+        lambda: fake_client,
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_email_exists",
+        lambda _client, _email: False,
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_company_exists",
+        lambda _client, _company_id: True,
+    )
+
+    def insert_profile(_client, profile):
+        inserted_profiles.append(profile)
+        return profile
+
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_insert_profile",
+        insert_profile,
+    )
+
+    result = app_module.admin_service.create_user(**new_user_payload())
+
+    assert auth_calls == [
+        {
+            "email": "user@example.com",
+            "password": "Password123!",
+            "email_confirm": True,
+        }
+    ]
+    assert inserted_profiles[0]["id"] == "auth-created-id"
+    assert "password" not in inserted_profiles[0]
+    assert "password" not in result
+
+
+def test_profile_failure_deletes_created_auth_user(app_module, monkeypatch):
+    deleted_user_ids = []
+
+    class FakeAuthAdmin:
+        def create_user(self, _attributes):
+            return SimpleNamespace(user=SimpleNamespace(id="auth-created-id"))
+
+        def delete_user(self, user_id):
+            deleted_user_ids.append(user_id)
+
+    fake_client = SimpleNamespace(auth=SimpleNamespace(admin=FakeAuthAdmin()))
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "get_supabase_admin_client",
+        lambda: fake_client,
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_email_exists",
+        lambda _client, _email: False,
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_company_exists",
+        lambda _client, _company_id: True,
+    )
+
+    def fail_profile_insert(_client, _profile):
+        raise RuntimeError("profile insert failed")
+
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_insert_profile",
+        fail_profile_insert,
+    )
+
+    with pytest.raises(app_module.admin_service.ProfileCreationError):
+        app_module.admin_service.create_user(**new_user_payload())
+
+    assert deleted_user_ids == ["auth-created-id"]
+
+
+def test_auth_duplicate_email_is_reported_as_conflict(app_module, monkeypatch):
+    class FakeAuthAdmin:
+        def create_user(self, _attributes):
+            raise RuntimeError("Email already registered")
+
+    fake_client = SimpleNamespace(auth=SimpleNamespace(admin=FakeAuthAdmin()))
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "get_supabase_admin_client",
+        lambda: fake_client,
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_email_exists",
+        lambda _client, _email: False,
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "_company_exists",
+        lambda _client, _company_id: True,
+    )
+
+    with pytest.raises(app_module.admin_service.DuplicateEmailError):
+        app_module.admin_service.create_user(**new_user_payload())
+
+
+def test_update_user_success(client, app_module, monkeypatch, mock_audit_log):
+    updated_user = {
+        "id": "target-user",
+        "username": "updated",
+        "email": "target@example.com",
+        "role_id": "new-role",
+        "company_id": 2,
+    }
+    received = {}
+
+    def update_user(user_id, changes):
+        received["user_id"] = user_id
+        received["changes"] = changes
+        return updated_user
+
+    monkeypatch.setattr(app_module.admin_service, "update_user", update_user)
+    login_as(client, "系統管理員")
+
+    response = client.patch(
+        "/api/admin/users/target-user",
+        json={"username": "updated", "role_id": "new-role", "company_id": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"user": updated_user}
+    assert received == {
+        "user_id": "target-user",
+        "changes": {
+            "username": "updated",
+            "role_id": "new-role",
+            "company_id": 2,
+        },
+    }
+    assert mock_audit_log[-1]["action"] == "UPDATE_USER"
+    assert mock_audit_log[-1]["status"] == "success"
+
+
+def test_update_user_rejects_email_change(client, app_module, monkeypatch):
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "update_user",
+        lambda *_args, **_kwargs: pytest.fail("Service must not be called."),
+    )
+    login_as(client, "系統管理員")
+
+    response = client.patch(
+        "/api/admin/users/target-user",
+        json={"email": "changed@example.com"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["field"] == "email"
+
+
+def test_update_missing_user_returns_404(client, app_module, monkeypatch):
+    def raise_not_found(_user_id, _changes):
+        raise app_module.admin_service.UserNotFoundError()
+
+    monkeypatch.setattr(app_module.admin_service, "update_user", raise_not_found)
+    login_as(client, "系統管理員")
+
+    response = client.patch(
+        "/api/admin/users/missing-user",
+        json={"username": "updated"},
+    )
+
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "User not found."}
+
+
+def test_admin_cannot_disable_self(client, app_module, monkeypatch, mock_audit_log):
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "disable_user",
+        lambda _user_id: pytest.fail("Service must not be called."),
+    )
+    login_as(client, "系統管理員", user_id="admin-user")
+
+    response = client.post("/api/admin/users/admin-user/disable")
+
+    assert response.status_code == 400
+    assert response.get_json() == {
+        "error": "Administrators cannot disable themselves."
+    }
+    assert mock_audit_log[-1]["action"] == "DISABLE_USER"
+    assert mock_audit_log[-1]["status"] == "failed"
+
+
+def test_disable_user_success(client, app_module, monkeypatch, mock_audit_log):
+    disabled_user = {
+        "id": "target-user",
+        "username": "Target",
+        "email": "target@example.com",
+        "role_id": "role-uuid",
+        "company_id": 1,
+        "is_active": False,
+    }
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "disable_user",
+        lambda _user_id: (disabled_user, False),
+    )
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users/target-user/disable")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "user": disabled_user,
+        "already_disabled": False,
+    }
+    assert mock_audit_log[-1]["action"] == "DISABLE_USER"
+    assert mock_audit_log[-1]["status"] == "success"
+
+
+def test_disable_user_returns_explicit_already_disabled_result(
+    client, app_module, monkeypatch
+):
+    disabled_user = {"id": "target-user", "is_active": False}
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "disable_user",
+        lambda _user_id: (disabled_user, True),
+    )
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users/target-user/disable")
+
+    assert response.status_code == 200
+    assert response.get_json()["already_disabled"] is True
+
+
+def test_disable_missing_user_returns_404(client, app_module, monkeypatch):
+    def raise_not_found(_user_id):
+        raise app_module.admin_service.UserNotFoundError()
+
+    monkeypatch.setattr(app_module.admin_service, "disable_user", raise_not_found)
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users/missing-user/disable")
+
+    assert response.status_code == 404
+    assert response.get_json() == {"error": "User not found."}
+
+
+def test_disable_reports_missing_status_column(client, app_module, monkeypatch):
+    def raise_missing_column(_user_id):
+        raise app_module.admin_service.UserStatusConfigError(
+            "public.users.is_active is required to disable accounts."
+        )
+
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "disable_user",
+        raise_missing_column,
+    )
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users/target-user/disable")
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "public.users.is_active is required to disable accounts.",
+        "code": "USER_STATUS_COLUMN_MISSING",
+    }
+
+
+def test_create_user_reports_missing_supabase_secret(
+    client, app_module, monkeypatch
+):
+    def raise_missing_config(**_kwargs):
+        raise app_module.SupabaseConfigError(
+            "Missing required environment variable: SUPABASE_SECRET_KEY"
+        )
+
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "create_user",
+        raise_missing_config,
+    )
+    login_as(client, "系統管理員")
+
+    response = client.post("/api/admin/users", json=new_user_payload())
+
+    assert response.status_code == 503
+    assert response.get_json() == {
+        "error": "Missing required environment variable: SUPABASE_SECRET_KEY"
+    }

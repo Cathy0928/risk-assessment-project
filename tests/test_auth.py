@@ -44,6 +44,7 @@ class MockAuth:
     def __init__(self, fail=False):
         self.fail = fail
         self.calls = []
+        self.sign_out_calls = 0
 
     def sign_in_with_password(self, credentials):
         self.calls.append(credentials)
@@ -51,10 +52,14 @@ class MockAuth:
             raise RuntimeError("invalid credentials")
         return AuthResponse()
 
+    def sign_out(self):
+        self.sign_out_calls += 1
+
 
 class MockSupabase:
-    def __init__(self, fail_auth=False):
+    def __init__(self, fail_auth=False, is_active=True):
         self.auth = MockAuth(fail=fail_auth)
+        self.is_active = is_active
 
     def table(self, name):
         if name == "users":
@@ -65,6 +70,7 @@ class MockSupabase:
                     "email": "peggy@example.com",
                     "role_id": 1,
                     "company_id": 7,
+                    "is_active": self.is_active,
                 }
             )
         if name == "roles":
@@ -133,6 +139,24 @@ def test_login_failure_shows_generic_error(client, app_module, monkeypatch):
 
     assert response.status_code == 200
     assert "電子郵件或密碼錯誤".encode("utf-8") in response.data
+
+
+def test_disabled_user_cannot_create_session(client, app_module, monkeypatch):
+    supabase = MockSupabase(is_active=False)
+    monkeypatch.setattr(app_module, "get_supabase_client", lambda: supabase)
+
+    response = client.post(
+        "/login",
+        data={"email": "disabled@example.com", "password": "not-a-real-password"},
+    )
+
+    assert response.status_code == 200
+    assert response.location is None
+    assert app_module.ACCOUNT_DISABLED_MESSAGE.encode("utf-8") in response.data
+    assert supabase.auth.sign_out_calls == 1
+    with client.session_transaction() as sess:
+        assert "logged_in" not in sess
+        assert "user_id" not in sess
 
 
 def test_login_success_creates_session(client, app_module, monkeypatch):
