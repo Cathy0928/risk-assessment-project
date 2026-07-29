@@ -20,10 +20,10 @@ import webbrowser
 import pandas as pd
 
 try:
-    from .services import admin_service
+    from .services import admin_service, backup_service
     from .services.supabase_client import SupabaseConfigError, get_supabase_client
 except ImportError:  # Allows `python app.py` from inside riskGenie/.
-    from services import admin_service
+    from services import admin_service, backup_service
     from services.supabase_client import SupabaseConfigError, get_supabase_client
 
 
@@ -497,6 +497,49 @@ def create_app(test_config=None):
                 "already_disabled": already_disabled,
             }
         )
+
+    def write_backup_audit(status):
+        try:
+            admin_service.write_audit_log(
+                operator_id=session.get("user_id"),
+                action="EXPORT_BACKUP",
+                ip_address=request.remote_addr,
+                status=status,
+            )
+        except Exception as exc:
+            app.logger.warning(
+                "Unable to write backup audit log (%s).",
+                type(exc).__name__,
+            )
+
+    @app.route("/api/admin/backups/export", methods=["POST"])
+    @admin_required
+    def api_admin_export_backup():
+        company_id = session.get("company_id")
+        if company_id is None:
+            return jsonify({"error": "Company scope is required."}), 403
+
+        try:
+            export = backup_service.create_backup_archive(
+                generated_by=session.get("user_id"),
+                company_id=company_id,
+            )
+            response = send_file(
+                export["stream"],
+                mimetype="application/zip",
+                as_attachment=True,
+                download_name=export["filename"],
+                max_age=0,
+            )
+        except backup_service.BackupUnavailableError:
+            write_backup_audit("failed")
+            return jsonify({"error": "Unable to export backup."}), 503
+        except Exception:
+            write_backup_audit("failed")
+            return jsonify({"error": "Unable to export backup."}), 503
+
+        write_backup_audit("success")
+        return response
 
 
 
