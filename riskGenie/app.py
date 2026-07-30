@@ -15,234 +15,15 @@ from functools import wraps
 from datetime import datetime
 
 import os
-import re
 import webbrowser
 import pandas as pd
 
-try:
-    from .services import admin_service, backup_service
-    from .services.supabase_client import SupabaseConfigError, get_supabase_client
-except ImportError:  # Allows `python app.py` from inside riskGenie/.
-    from services import admin_service, backup_service
-    from services.supabase_client import SupabaseConfigError, get_supabase_client
+from dotenv import load_dotenv
+from supabase import create_client
 
 
-REQUIRED_ENV_VARS = ("FLASK_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY")
-LOGIN_ERROR_MESSAGE = "電子郵件或密碼錯誤"
-ACCOUNT_DISABLED_MESSAGE = "帳號已停用，請聯絡系統管理員"
-ADMIN_ROLE_NAME = "系統管理員"
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-CREATE_USER_FIELDS = {"username", "email", "password", "role_id"}
-UPDATE_USER_FIELDS = {"username", "role_id"}
-
-
-class AccountDisabledError(RuntimeError):
-    """Raised when an authenticated user has a disabled public profile."""
-
-
-def _get_response_data(response):
-    if response is None:
-        return None
-    if isinstance(response, dict):
-        return response.get("data", response)
-    return getattr(response, "data", response)
-
-
-def _get_user_id(auth_response):
-    user = getattr(auth_response, "user", None)
-    if user is None and isinstance(auth_response, dict):
-        user = auth_response.get("user")
-    if isinstance(user, dict):
-        return user.get("id")
-    return getattr(user, "id", None)
-
-
-def _single_record(response):
-    data = _get_response_data(response)
-    if isinstance(data, list):
-        return data[0] if data else None
-    return data
-
-
-def _validate_runtime_config(app):
-    missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
-    if missing and not app.config.get("TESTING"):
-        joined = ", ".join(missing)
-        raise RuntimeError(f"Missing required environment variables: {joined}")
-
-    secret_key = app.config.get("SECRET_KEY") or os.getenv("FLASK_SECRET_KEY")
-    if not secret_key and not app.config.get("TESTING"):
-        raise RuntimeError("Missing required environment variable: FLASK_SECRET_KEY")
-    app.secret_key = secret_key or "test-secret-key"
-
-
-class _LazySupabaseClient:
-    def __init__(self):
-        self._client = None
-
-    def __getattr__(self, name):
-        if self._client is None:
-            self._client = get_supabase_client()
-        return getattr(self._client, name)
-
-
-def _load_profile(supabase, user_id):
-    user_response = (
-        supabase.table("users")
-        .select("id, username, email, role_id, company_id")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
-    profile = _single_record(user_response)
-    if not profile:
-        raise LookupError("Supabase public.users did not return a profile.")
-
-    try:
-        active_response = (
-            supabase.table("users")
-            .select("is_active")
-            .eq("id", user_id)
-            .single()
-            .execute()
-        )
-        active_profile = _single_record(active_response)
-        if active_profile and active_profile.get("is_active") is False:
-            raise AccountDisabledError("The user account is disabled.")
-    except AccountDisabledError:
-        raise
-    except Exception as exc:
-        message = str(exc).lower()
-        missing_column = "is_active" in message and any(
-            token in message for token in ("column", "schema", "field", "pgrst")
-        )
-        if not missing_column:
-            raise
-
-    role_name = None
-    role_id = profile.get("role_id")
-    if role_id is not None:
-        role_response = (
-            supabase.table("roles")
-            .select("role_name")
-            .eq("id", role_id)
-            .single()
-            .execute()
-        )
-        role = _single_record(role_response)
-        if role:
-            role_name = role.get("role_name")
-
-    return {
-        "id": profile.get("id"),
-        "username": profile.get("username"),
-        "email": profile.get("email"),
-        "role_name": role_name,
-        "company_id": profile.get("company_id"),
-    }
-
-
-def _store_login_session(profile):
-    session.clear()
-    session["user_id"] = profile["id"]
-    session["username"] = profile["username"]
-    session["email"] = profile["email"]
-    session["role_name"] = profile["role_name"]
-    session["company_id"] = profile["company_id"]
-    session["logged_in"] = True
-
-
-def _validation_error(field, message):
-    return {"error": "Validation failed", "field": field, "message": message}
-
-
-def _validate_company_id(value):
-    return isinstance(value, int) and not isinstance(value, bool) and value > 0
-
-
-def _session_company_id():
-    company_id = session.get("company_id")
-    return company_id if _validate_company_id(company_id) else None
-
-
-def _validate_create_user_payload(payload):
-    if not isinstance(payload, dict):
-        return None, _validation_error("body", "A JSON object is required.")
-
-    if "company_id" in payload:
-        return None, _validation_error(
-            "company_id", "company_id cannot be specified by the client."
-        )
-
-    missing = [field for field in CREATE_USER_FIELDS if field not in payload]
-    if missing:
-        return None, _validation_error(
-            missing[0], f"Missing required field: {missing[0]}"
-        )
-
-    username = payload.get("username")
-    email = payload.get("email")
-    password = payload.get("password")
-    role_id = payload.get("role_id")
-
-    if not isinstance(username, str) or not username.strip():
-        return None, _validation_error("username", "username must not be blank.")
-    if not isinstance(email, str) or not EMAIL_PATTERN.fullmatch(email.strip()):
-        return None, _validation_error("email", "email format is invalid.")
-    if not isinstance(password, str) or len(password) < 8:
-        return None, _validation_error(
-            "password", "password must be at least 8 characters."
-        )
-    if not isinstance(role_id, str) or not role_id.strip():
-        return None, _validation_error("role_id", "role_id must not be blank.")
-
-    return {
-        "username": username.strip(),
-        "email": email.strip().lower(),
-        "password": password,
-        "role_id": role_id.strip(),
-    }, None
-
-
-def _validate_update_user_payload(payload):
-    if not isinstance(payload, dict):
-        return None, _validation_error("body", "A JSON object is required.")
-    if not payload:
-        return None, _validation_error("body", "At least one field is required.")
-
-    unsupported = set(payload) - UPDATE_USER_FIELDS
-    if unsupported:
-        field = sorted(unsupported)[0]
-        return None, _validation_error(field, f"{field} cannot be changed.")
-
-    changes = {}
-    if "username" in payload:
-        username = payload["username"]
-        if not isinstance(username, str) or not username.strip():
-            return None, _validation_error(
-                "username", "username must not be blank."
-            )
-        changes["username"] = username.strip()
-
-    if "role_id" in payload:
-        role_id = payload["role_id"]
-        if not isinstance(role_id, str) or not role_id.strip():
-            return None, _validation_error("role_id", "role_id must not be blank.")
-        changes["role_id"] = role_id.strip()
-
-    return changes, None
-
-
-def _audit_admin_action(action, status):
-    try:
-        admin_service.write_audit_log(
-            operator_id=session.get("user_id"),
-            action=action,
-            ip_address=request.remote_addr,
-            status=status,
-        )
-    except Exception:
-        pass
+# 載入 .env
+load_dotenv()
 
 
 # ===============================
@@ -265,37 +46,40 @@ def login_required(view_func):
     return wrapped
 
 
-def admin_required(view_func):
-    @wraps(view_func)
-    def wrapped(*args, **kwargs):
-        if not session.get("logged_in"):
-            return jsonify({"error": "Unauthorized"}), 401
-        if session.get("role_name") != ADMIN_ROLE_NAME:
-            return jsonify({"error": "Forbidden"}), 403
-        return view_func(*args, **kwargs)
-
-    return wrapped
-
-
 
 # ===============================
 # Flask App
 # ===============================
 
-def create_app(test_config=None):
+def create_app():
 
     app = Flask(__name__)
 
-    app.config.update(
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=os.getenv("FLASK_ENV") == "production",
-    )
-    if test_config:
-        app.config.update(test_config)
-    _validate_runtime_config(app)
 
-    supabase = _LazySupabaseClient()
+    # Session 金鑰
+    app.secret_key = os.getenv(
+        "FLASK_SECRET_KEY",
+        "dev-secret-key"
+    )
+
+
+    # ===============================
+    # Supabase 連線
+    # ===============================
+
+    SUPABASE_URL = os.getenv(
+        "SUPABASE_URL"
+    )
+
+    SUPABASE_KEY = os.getenv(
+        "SUPABASE_ANON_KEY"
+    )
+
+
+    supabase = create_client(
+        SUPABASE_URL,
+        SUPABASE_KEY
+    )
 
 
 
@@ -303,50 +87,62 @@ def create_app(test_config=None):
     # 登入
     # ===============================
 
-    @app.route("/login", methods=["GET", "POST"])
+    @app.route("/login",methods=["GET", "POST"]    )
     def login():
-        if session.get("logged_in"):
-            return redirect(url_for("home"))
+
         error = None
 
+
         if request.method == "POST":
-            email = request.form.get("email", "").strip()
-            password = request.form.get("password", "")
-            auth_succeeded = False
 
-            if not email or not password:
-                error = "請輸入電子郵件與密碼"
-            else:
-                try:
-                    auth_client = get_supabase_client()
-                    auth_response = auth_client.auth.sign_in_with_password(
-                        {"email": email, "password": password}
+            email = request.form.get(
+                "email"
+            )
+
+            password = request.form.get(
+                "password"
+            )
+
+
+            try:
+
+                auth_response = (
+                    supabase
+                    .auth
+                    .sign_in_with_password(
+                        {
+                            "email": email,
+                            "password": password
+                        }
                     )
-                    user_id = _get_user_id(auth_response)
-                    if not user_id:
-                        raise ValueError("Supabase Auth did not return a user id.")
+                )
 
-                    auth_succeeded = True
-                    profile = _load_profile(auth_client, user_id)
-                    _store_login_session(profile)
-                    return redirect(url_for("home"))
-                except AccountDisabledError:
-                    session.clear()
-                    try:
-                        auth_client.auth.sign_out()
-                    except Exception:
-                        pass
-                    error = ACCOUNT_DISABLED_MESSAGE
-                except Exception:
-                    if auth_succeeded:
-                        error = (
-                            "登入成功，但無法取得使用者資料，"
-                            "請確認 Supabase RLS policy。"
-                        )
-                    else:
-                        error = LOGIN_ERROR_MESSAGE
 
-        return render_template("login.html", error=error)
+                user = auth_response.user
+
+
+                session["user_id"] = user.id
+
+                session["username"] = email
+
+                session["logged_in"] = True
+
+
+                return redirect(
+                    url_for("home")
+                )
+
+
+            except Exception:
+
+                error = "電子郵件或密碼錯誤"
+
+
+
+        return render_template(
+            "login.html",
+            error=error
+        )
 
 
 
@@ -363,204 +159,6 @@ def create_app(test_config=None):
         return redirect(
             url_for("login")
         )
-
-    @app.route("/api/auth/me", methods=["GET"])
-    def api_auth_me():
-        if not session.get("logged_in"):
-            return jsonify({"error": "Unauthorized"}), 401
-        return jsonify(
-            {
-                "id": session.get("user_id"),
-                "username": session.get("username"),
-                "email": session.get("email"),
-                "role": session.get("role_name"),
-                "company_id": session.get("company_id"),
-            }
-        )
-
-    @app.route("/admin/users", methods=["GET"])
-    @admin_required
-    def admin_users_page():
-        if _session_company_id() is None:
-            return jsonify({"error": "Company context is required."}), 403
-        return render_template("admin_users.html")
-
-    @app.route("/api/admin/roles", methods=["GET"])
-    @admin_required
-    def api_admin_roles():
-        try:
-            return jsonify({"roles": admin_service.list_roles()})
-        except Exception:
-            return jsonify({"error": "Unable to load roles"}), 503
-
-    @app.route("/api/admin/users", methods=["GET"])
-    @admin_required
-    def api_admin_users():
-        company_id = _session_company_id()
-        if company_id is None:
-            return jsonify({"error": "Company context is required."}), 403
-        try:
-            return jsonify({"users": admin_service.list_users(company_id)})
-        except Exception:
-            return jsonify({"error": "Unable to load users"}), 503
-
-    @app.route("/api/admin/users", methods=["POST"])
-    @admin_required
-    def api_admin_create_user():
-        action = "CREATE_USER"
-        company_id = _session_company_id()
-        if company_id is None:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Company context is required."}), 403
-
-        payload, validation_error = _validate_create_user_payload(
-            request.get_json(silent=True)
-        )
-        if validation_error:
-            _audit_admin_action(action, "failed")
-            return jsonify(validation_error), 400
-
-        try:
-            user = admin_service.create_user(company_id=company_id, **payload)
-        except admin_service.DuplicateEmailError:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Email is already in use."}), 409
-        except admin_service.CompanyNotFoundError:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Company does not exist."}), 400
-        except SupabaseConfigError as exc:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": str(exc)}), 503
-        except admin_service.ProfileCreationError:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Unable to create user profile."}), 503
-        except Exception:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Unable to create user."}), 503
-
-        _audit_admin_action(action, "success")
-        return jsonify({"user": user}), 201
-
-    @app.route("/api/admin/users/<user_id>", methods=["PATCH"])
-    @admin_required
-    def api_admin_update_user(user_id):
-        action = "UPDATE_USER"
-        company_id = _session_company_id()
-        if company_id is None:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Company context is required."}), 403
-
-        changes, validation_error = _validate_update_user_payload(
-            request.get_json(silent=True)
-        )
-        if validation_error:
-            _audit_admin_action(action, "failed")
-            return jsonify(validation_error), 400
-
-        try:
-            user = admin_service.update_user(user_id, changes, company_id)
-        except admin_service.UserNotFoundError:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "User not found."}), 404
-        except admin_service.CompanyNotFoundError:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Company does not exist."}), 400
-        except SupabaseConfigError as exc:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": str(exc)}), 503
-        except Exception:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Unable to update user."}), 503
-
-        _audit_admin_action(action, "success")
-        return jsonify({"user": user})
-
-    @app.route("/api/admin/users/<user_id>/disable", methods=["POST"])
-    @admin_required
-    def api_admin_disable_user(user_id):
-        action = "DISABLE_USER"
-        company_id = _session_company_id()
-        if company_id is None:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Company context is required."}), 403
-
-        if user_id == session.get("user_id"):
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Administrators cannot disable themselves."}), 400
-
-        try:
-            user, already_disabled = admin_service.disable_user(user_id, company_id)
-        except admin_service.UserNotFoundError:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "User not found."}), 404
-        except admin_service.UserStatusConfigError as exc:
-            _audit_admin_action(action, "failed")
-            return (
-                jsonify(
-                    {
-                        "error": str(exc),
-                        "code": "USER_STATUS_COLUMN_MISSING",
-                    }
-                ),
-                503,
-            )
-        except SupabaseConfigError as exc:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": str(exc)}), 503
-        except Exception:
-            _audit_admin_action(action, "failed")
-            return jsonify({"error": "Unable to disable user."}), 503
-
-        _audit_admin_action(action, "success")
-        return jsonify(
-            {
-                "user": user,
-                "already_disabled": already_disabled,
-            }
-        )
-
-    def write_backup_audit(status):
-        try:
-            admin_service.write_audit_log(
-                operator_id=session.get("user_id"),
-                action="EXPORT_BACKUP",
-                ip_address=request.remote_addr,
-                status=status,
-            )
-        except Exception as exc:
-            app.logger.warning(
-                "Unable to write backup audit log (%s).",
-                type(exc).__name__,
-            )
-
-    @app.route("/api/admin/backups/export", methods=["POST"])
-    @admin_required
-    def api_admin_export_backup():
-        company_id = session.get("company_id")
-        if company_id is None:
-            return jsonify({"error": "Company scope is required."}), 403
-
-        try:
-            export = backup_service.create_backup_archive(
-                generated_by=session.get("user_id"),
-                company_id=company_id,
-            )
-            response = send_file(
-                export["stream"],
-                mimetype="application/zip",
-                as_attachment=True,
-                download_name=export["filename"],
-                max_age=0,
-            )
-        except backup_service.BackupUnavailableError:
-            write_backup_audit("failed")
-            return jsonify({"error": "Unable to export backup."}), 503
-        except Exception:
-            write_backup_audit("failed")
-            return jsonify({"error": "Unable to export backup."}), 503
-
-        write_backup_audit("success")
-        return response
 
 
 
@@ -1122,7 +720,7 @@ def create_app(test_config=None):
 
 
         if request.method == "POST":
-            
+
             new_code = request.form["asset_id_code"]
 
             exist = (
@@ -1326,11 +924,11 @@ def create_app(test_config=None):
     return app
 
 
-if __name__ == "__main__":
-    from dotenv import load_dotenv
+app = create_app()
+print(app.url_map)
 
-    load_dotenv()
-    app = create_app()
+if __name__ == "__main__":
+
     webbrowser.open(
         "http://127.0.0.1:5000"
     )
@@ -1339,5 +937,3 @@ if __name__ == "__main__":
         debug=True,
         port=5000
     )
-else:
-    app = create_app()
