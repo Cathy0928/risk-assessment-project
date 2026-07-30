@@ -44,7 +44,6 @@ class RiskService:
             response = supabase.table("weight_settings").select("*").eq("company_id", company_id).execute()
             
             if response.data and len(response.data) > 0:
-                # 💡 修復：response.data 是清單 [0]，需取第 0 筆資料
                 data = response.data[0]
                 return {
                     "company_id": int(data.get("company_id", company_id)),
@@ -88,7 +87,7 @@ class RiskService:
     @staticmethod
     def save_weight_settings(company_id: int, formula_type: str, weight_c: float, weight_i: float, weight_a: float) -> dict:
         """
-        儲存或更新給定公司 ID 的權重公式設定。
+        儲存或更新給定公司 ID 的權重公式設定（使用 Supabase Upsert 確保寫入成功）。
         """
         weight_c = float(weight_c)
         weight_i = float(weight_i)
@@ -103,23 +102,29 @@ class RiskService:
         }
 
         supabase_success = False
+        
+        # 1. 寫入雲端 Supabase 資料庫
         try:
             supabase = get_supabase_client()
+            now_str = datetime.utcnow().isoformat()
+            
+            # 查詢該公司是否已有紀錄
             check_res = supabase.table("weight_settings").select("id").eq("company_id", company_id).execute()
             
-            now_str = datetime.utcnow().isoformat()
             if check_res.data and len(check_res.data) > 0:
-                # 💡 修復：取 list[0]["id"]
                 record_id = check_res.data[0]["id"]
-                supabase.table("weight_settings").update({
+                # UPDATE 既有紀錄
+                update_res = supabase.table("weight_settings").update({
                     "formula_type": formula_type,
                     "weight_c": weight_c,
                     "weight_i": weight_i,
                     "weight_a": weight_a,
                     "updated_at": now_str
                 }).eq("id", record_id).execute()
+                print("Supabase Update 結果:", update_res)
             else:
-                supabase.table("weight_settings").insert({
+                # INSERT 新紀錄
+                insert_res = supabase.table("weight_settings").insert({
                     "company_id": company_id,
                     "formula_type": formula_type,
                     "weight_c": weight_c,
@@ -128,10 +133,13 @@ class RiskService:
                     "created_at": now_str,
                     "updated_at": now_str
                 }).execute()
+                print("Supabase Insert 結果:", insert_res)
+                
             supabase_success = True
             logger.info(f"公司 {company_id} 權重設定已成功儲存至 Supabase。")
         except Exception as e:
-            logger.error(f"無法儲存權重設定到 Supabase，啟用降級機制: {e}")
+            print(f"❌ 寫入 Supabase 失敗詳情: {e}")
+            logger.error(f"無法儲存權重設定到 Supabase: {e}")
 
         # 2. 同步寫入本地 JSON 備份檔
         try:
@@ -147,7 +155,6 @@ class RiskService:
             fallback_data[str(company_id)] = settings_dict
             with open(FALLBACK_FILE, "w", encoding="utf-8") as f:
                 json.dump(fallback_data, f, ensure_ascii=False, indent=4)
-            logger.info(f"公司 {company_id} 權重設定已備份至本地 JSON。")
         except Exception as json_err:
             logger.error(f"無法將權重設定寫入本地備份檔: {json_err}")
 
