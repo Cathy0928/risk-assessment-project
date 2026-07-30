@@ -55,12 +55,8 @@ def create_app():
 
     app = Flask(__name__)
 
-
-    # Session 金鑰
-    app.secret_key = os.getenv(
-        "FLASK_SECRET_KEY",
-        "dev-secret-key"
-    )
+    # 💡 每次重啟伺服器時生成全新金鑰，讓所有舊 Session 立刻失效（強制回到登入頁面）
+    app.secret_key = os.urandom(24)
 
 
     # ===============================
@@ -87,11 +83,10 @@ def create_app():
     # 登入
     # ===============================
 
-    @app.route("/login",methods=["GET", "POST"]    )
+    @app.route("/login", methods=["GET", "POST"])
     def login():
 
         error = None
-
 
         if request.method == "POST":
 
@@ -419,7 +414,7 @@ def create_app():
     # 新增資產
     # ===============================
 
-    @app.route("/asset_add",methods=["GET","POST"])
+    @app.route("/asset_add", methods=["GET", "POST"])
     @login_required
     def asset_add():
 
@@ -703,7 +698,7 @@ def create_app():
     # 修改資產
     # ===============================
 
-    @app.route("/asset_edit/<int:id>",methods=["GET","POST"])
+    @app.route("/asset_edit/<int:id>", methods=["GET", "POST"])
     @login_required
     def asset_edit(id):
 
@@ -840,7 +835,7 @@ def create_app():
 
 
 
-        return render_template("asset_edit.html",asset=asset,asset_id=id)
+        return render_template("asset_edit.html", asset=asset, asset_id=id)
 
 
 
@@ -848,7 +843,7 @@ def create_app():
     # 刪除資產
     # ===============================
 
-    @app.route("/asset_delete/<int:id>",methods=["GET","POST"])
+    @app.route("/asset_delete/<int:id>", methods=["GET", "POST"])
     @login_required
     def asset_delete(id):
 
@@ -913,7 +908,7 @@ def create_app():
 
 
     # ===============================
-    # 權重設定 (💡 已移至 create_app 內部，並補上 @login_required)
+    # 權重設定
     # ===============================
     @app.route('/weight-setting')
     @login_required
@@ -928,10 +923,10 @@ app = create_app()
 print(app.url_map)
 
 if __name__ == "__main__":
-
-    webbrowser.open(
-        "http://127.0.0.1:5000"
-    )
+    import os
+    # 避免 Flask debug reloader 重複開啟瀏覽器
+    if not os.environ.get("WERKZEUG_RUN_MAIN"):
+        webbrowser.open("http://127.0.0.1:5000")
 
     app.run(
         debug=True,
