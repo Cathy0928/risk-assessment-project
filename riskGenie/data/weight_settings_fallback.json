@@ -2,8 +2,8 @@
     "1": {
         "company_id": 1,
         "formula_type": "sum",
-        "weight_c": 20.0,
-        "weight_i": 30.0,
+        "weight_c": 30.0,
+        "weight_i": 20.0,
         "weight_a": 50.0
     }
 }

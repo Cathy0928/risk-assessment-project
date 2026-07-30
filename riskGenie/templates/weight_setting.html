@@ -134,18 +134,11 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
 
-        // 若非加權平均法，可將輸入框調暗或隱藏
-        if (formulaType === "weighted_average") {
-            weightedInputs.style.opacity = "1";
-            inputC.disabled = false;
-            inputI.disabled = false;
-            inputA.disabled = false;
-        } else {
-            weightedInputs.style.opacity = "0.4";
-            inputC.disabled = true;
-            inputI.disabled = true;
-            inputA.disabled = true;
-        }
+        // 保持所有輸入框皆可修改與編輯
+        weightedInputs.style.opacity = "1";
+        inputC.disabled = false;
+        inputI.disabled = false;
+        inputA.disabled = false;
     }
 
     // 3. 表單 Ajax 提交
