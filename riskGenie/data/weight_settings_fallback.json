@@ -1,0 +1,9 @@
+{
+    "1": {
+        "company_id": 1,
+        "formula_type": "weighted_average",
+        "weight_c": 0.35,
+        "weight_i": 0.32,
+        "weight_a": 0.33
+    }
+}

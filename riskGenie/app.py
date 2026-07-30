@@ -15,6 +15,7 @@ from functools import wraps
 from datetime import datetime
 
 import os
+import sys
 import webbrowser
 import pandas as pd
 
@@ -22,8 +23,25 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 
-# 載入 .env
+# ===============================
+# 環境與路徑設定 (解決 ModuleNotFoundError)
+# ===============================
 load_dotenv()
+
+# 將專案根目錄與 riskGenie 目錄加入 sys.path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RISKGENIE_DIR = os.path.join(BASE_DIR, "riskGenie")
+
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+if RISKGENIE_DIR not in sys.path:
+    sys.path.insert(0, RISKGENIE_DIR)
+
+# 載入 Blueprint
+try:
+    from riskGenie.services.risk_routes import risk_bp
+except ImportError:
+    from services.risk_routes import risk_bp
 
 
 # ===============================
@@ -78,6 +96,11 @@ def create_app():
     )
 
 
+    # ===============================
+    # 註冊 Blueprint 模組
+    # ===============================
+    app.register_blueprint(risk_bp)
+
 
     # ===============================
     # 登入
@@ -115,12 +138,13 @@ def create_app():
 
                 user = auth_response.user
 
-
                 session["user_id"] = user.id
 
                 session["username"] = email
 
                 session["logged_in"] = True
+
+                session["company_id"] = getattr(user, "company_id", 1) or 1
 
 
                 return redirect(
@@ -908,12 +932,12 @@ def create_app():
 
 
     # ===============================
-    # 權重設定
+    # 權重設定（相容舊有 url_for('weight_setting') 指向 Blueprint）
     # ===============================
-    @app.route('/weight-setting')
+    @app.route('/weight-setting', endpoint='weight_setting')
     @login_required
     def weight_setting():
-        return render_template('weight_setting.html')
+        return redirect(url_for('risk.weight_setting_page'))
 
 
     return app

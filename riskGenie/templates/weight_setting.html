@@ -25,7 +25,9 @@
     </a>
 
     <button class="menu-btn">風險評鑑</button>
-    <button class="menu-btn active">權重設定</button>
+    <a href="{{ url_for('risk.weight_setting_page') }}">
+        <button class="menu-btn active">權重設定</button>
+    </a>
     <button class="menu-btn">AI建議</button>
     <button class="menu-btn">建議報表</button>
     <button class="menu-btn">帳號管理</button>
@@ -53,29 +55,29 @@
 
         <h1 class="page-title">權重設定</h1>
 
-        <form action="#" method="post" class="weight-form">
+        <form id="weightForm" class="weight-form">
 
             <div class="method-group">
                 
                 <div class="method-row">
-                    <button type="button" class="method-btn active">最大值</button>
+                    <button type="button" class="method-btn active" data-type="max">最大值</button>
                 </div>
 
                 <div class="method-row">
-                    <button type="button" class="method-btn">總合法</button>
+                    <button type="button" class="method-btn" data-type="sum">總合法</button>
                 </div>
 
                 <div class="method-row">
-                    <button type="button" class="method-btn">平均法</button>
+                    <button type="button" class="method-btn" data-type="avg">平均法</button>
                 </div>
 
                 <div class="method-row weighted-row">
-                    <button type="button" class="method-btn">加權平均法</button>
+                    <button type="button" class="method-btn" data-type="weighted_average">加權平均法</button>
 
-                    <div class="inputs-inline">
-                        <label>C : <input type="text" name="weight_c" class="underline-input"></label>
-                        <label>I : <input type="text" name="weight_i" class="underline-input"></label>
-                        <label>A : <input type="text" name="weight_a" class="underline-input"></label>
+                    <div class="inputs-inline" id="weightedInputs">
+                        <label>C : <input type="number" step="0.01" min="0" max="100" id="weight_c" name="weight_c" class="underline-input" value="0.3333"></label>
+                        <label>I : <input type="number" step="0.01" min="0" max="100" id="weight_i" name="weight_i" class="underline-input" value="0.3333"></label>
+                        <label>A : <input type="number" step="0.01" min="0" max="100" id="weight_a" name="weight_a" class="underline-input" value="0.3333"></label>
                     </div>
                 </div>
 
@@ -90,6 +92,92 @@
     </div>
 
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    let currentFormula = "max";
+    const buttons = document.querySelectorAll(".method-btn");
+    const weightedInputs = document.getElementById("weightedInputs");
+    const inputC = document.getElementById("weight_c");
+    const inputI = document.getElementById("weight_i");
+    const inputA = document.getElementById("weight_a");
+
+    // 1. 進入頁面時呼叫 API 載入當前設定
+    fetch("/api/weight-settings")
+        .then(res => res.json())
+        .then(data => {
+            if (data && data.formula_type) {
+                currentFormula = data.formula_type;
+                setActiveButton(currentFormula);
+                
+                if (data.weight_c !== undefined) inputC.value = data.weight_c;
+                if (data.weight_i !== undefined) inputI.value = data.weight_i;
+                if (data.weight_a !== undefined) inputA.value = data.weight_a;
+            }
+        })
+        .catch(err => console.error("讀取權重設定失敗:", err));
+
+    // 2. 切換公式按鈕效果與狀態紀錄
+    buttons.forEach(btn => {
+        btn.addEventListener("click", function () {
+            currentFormula = this.getAttribute("data-type");
+            setActiveButton(currentFormula);
+        });
+    });
+
+    function setActiveButton(formulaType) {
+        buttons.forEach(b => {
+            if (b.getAttribute("data-type") === formulaType) {
+                b.classList.add("active");
+            } else {
+                b.classList.remove("active");
+            }
+        });
+
+        // 若非加權平均法，可將輸入框調暗或隱藏
+        if (formulaType === "weighted_average") {
+            weightedInputs.style.opacity = "1";
+            inputC.disabled = false;
+            inputI.disabled = false;
+            inputA.disabled = false;
+        } else {
+            weightedInputs.style.opacity = "0.4";
+            inputC.disabled = true;
+            inputI.disabled = true;
+            inputA.disabled = true;
+        }
+    }
+
+    // 3. 表單 Ajax 提交
+    document.getElementById("weightForm").addEventListener("submit", function (e) {
+        e.preventDefault();
+
+        const payload = {
+            formula_type: currentFormula,
+            weight_c: parseFloat(inputC.value) || 0.3333,
+            weight_i: parseFloat(inputI.value) || 0.3333,
+            weight_a: parseFloat(inputA.value) || 0.3333
+        };
+
+        fetch("/api/weight-settings", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json().then(data => ({ status: res.status, body: data })))
+        .then(res => {
+            if (res.status === 200) {
+                alert("✅ 權重與公式設定儲存成功！");
+            } else {
+                alert("❌ 儲存失敗: " + (res.body.error || "未知錯誤"));
+            }
+        })
+        .catch(err => alert("發送請求失敗: " + err));
+    });
+});
+</script>
 
 </body>
 </html>
