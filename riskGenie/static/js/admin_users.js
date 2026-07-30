@@ -61,19 +61,12 @@
         event.preventDefault();
 
         var formData = new FormData(elements.createForm);
-        var companyId = Number(formData.get("company_id"));
         var payload = {
             username: String(formData.get("username") || "").trim(),
             email: String(formData.get("email") || "").trim(),
             password: String(formData.get("password") || ""),
-            role_id: String(formData.get("role_id") || "").trim(),
-            company_id: companyId
+            role_id: String(formData.get("role_id") || "").trim()
         };
-
-        if (!Number.isInteger(companyId) || companyId < 1) {
-            showMessage("公司 ID 必須是正整數。", "error");
-            return;
-        }
 
         setCreateBusy(true);
         clearMessage();
@@ -148,7 +141,7 @@
 
         if (isEditing) {
             appendCell(row, createRoleSelect(user.role_id));
-            appendCell(row, createCompanyInput(user.company_id));
+            appendTextCell(row, user.company_id == null ? "未提供" : String(user.company_id));
         } else {
             appendTextCell(row, getRoleName(user.role_id));
             appendTextCell(row, user.company_id == null ? "未提供" : String(user.company_id));
@@ -186,31 +179,16 @@
         return select;
     }
 
-    function createCompanyInput(companyId) {
-        var input = document.createElement("input");
-        input.type = "number";
-        input.name = "company_id";
-        input.min = "1";
-        input.step = "1";
-        input.required = true;
-        input.value = companyId == null ? "" : String(companyId);
-        input.setAttribute("aria-label", "公司 ID");
-        return input;
-    }
-
     function createStatusBadge(isActive) {
         var badge = document.createElement("span");
         badge.classList.add("status-badge");
 
         if (isActive === true) {
             badge.classList.add("status-active");
-            badge.textContent = "啟用中";
-        } else if (isActive === false) {
+            badge.textContent = "啟用";
+        } else {
             badge.classList.add("status-disabled");
             badge.textContent = "已停用";
-        } else {
-            badge.classList.add("status-unknown");
-            badge.textContent = "狀態未知";
         }
 
         return badge;
@@ -239,7 +217,7 @@
         var disableButton = createActionButton("停用", function (event) {
             disableUser(user, event.currentTarget.closest("tr"));
         }, "danger");
-        disableButton.disabled = user.is_active === false;
+        disableButton.disabled = user.is_active !== true;
         container.appendChild(disableButton);
         return container;
     }
@@ -256,7 +234,6 @@
     async function saveUser(user, row) {
         var username = row.querySelector('[name="username"]').value.trim();
         var roleId = row.querySelector('[name="role_id"]').value;
-        var companyId = Number(row.querySelector('[name="company_id"]').value);
 
         if (!username) {
             showMessage("使用者名稱不可空白。", "error");
@@ -264,10 +241,6 @@
         }
         if (!roleId) {
             showMessage("請選擇角色。", "error");
-            return;
-        }
-        if (!Number.isInteger(companyId) || companyId < 1) {
-            showMessage("公司 ID 必須是正整數。", "error");
             return;
         }
 
@@ -279,8 +252,7 @@
                 method: "PATCH",
                 body: JSON.stringify({
                     username: username,
-                    role_id: roleId,
-                    company_id: companyId
+                    role_id: roleId
                 })
             });
             mergeUser(user.id, response.user);

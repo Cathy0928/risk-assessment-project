@@ -32,8 +32,8 @@ LOGIN_ERROR_MESSAGE = "電子郵件或密碼錯誤"
 ACCOUNT_DISABLED_MESSAGE = "帳號已停用，請聯絡系統管理員"
 ADMIN_ROLE_NAME = "系統管理員"
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-CREATE_USER_FIELDS = {"username", "email", "password", "role_id", "company_id"}
-UPDATE_USER_FIELDS = {"username", "role_id", "company_id"}
+CREATE_USER_FIELDS = {"username", "email", "password", "role_id"}
+UPDATE_USER_FIELDS = {"username", "role_id"}
 
 
 class AccountDisabledError(RuntimeError):
@@ -160,9 +160,19 @@ def _validate_company_id(value):
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+def _session_company_id():
+    company_id = session.get("company_id")
+    return company_id if _validate_company_id(company_id) else None
+
+
 def _validate_create_user_payload(payload):
     if not isinstance(payload, dict):
         return None, _validation_error("body", "A JSON object is required.")
+
+    if "company_id" in payload:
+        return None, _validation_error(
+            "company_id", "company_id cannot be specified by the client."
+        )
 
     missing = [field for field in CREATE_USER_FIELDS if field not in payload]
     if missing:
@@ -174,7 +184,6 @@ def _validate_create_user_payload(payload):
     email = payload.get("email")
     password = payload.get("password")
     role_id = payload.get("role_id")
-    company_id = payload.get("company_id")
 
     if not isinstance(username, str) or not username.strip():
         return None, _validation_error("username", "username must not be blank.")
@@ -186,17 +195,12 @@ def _validate_create_user_payload(payload):
         )
     if not isinstance(role_id, str) or not role_id.strip():
         return None, _validation_error("role_id", "role_id must not be blank.")
-    if not _validate_company_id(company_id):
-        return None, _validation_error(
-            "company_id", "company_id must be a positive integer."
-        )
 
     return {
         "username": username.strip(),
         "email": email.strip().lower(),
         "password": password,
         "role_id": role_id.strip(),
-        "company_id": company_id,
     }, None
 
 
@@ -225,14 +229,6 @@ def _validate_update_user_payload(payload):
         if not isinstance(role_id, str) or not role_id.strip():
             return None, _validation_error("role_id", "role_id must not be blank.")
         changes["role_id"] = role_id.strip()
-
-    if "company_id" in payload:
-        company_id = payload["company_id"]
-        if not _validate_company_id(company_id):
-            return None, _validation_error(
-                "company_id", "company_id must be a positive integer."
-            )
-        changes["company_id"] = company_id
 
     return changes, None
 
@@ -385,6 +381,8 @@ def create_app(test_config=None):
     @app.route("/admin/users", methods=["GET"])
     @admin_required
     def admin_users_page():
+        if _session_company_id() is None:
+            return jsonify({"error": "Company context is required."}), 403
         return render_template("admin_users.html")
 
     @app.route("/api/admin/roles", methods=["GET"])
@@ -398,8 +396,11 @@ def create_app(test_config=None):
     @app.route("/api/admin/users", methods=["GET"])
     @admin_required
     def api_admin_users():
+        company_id = _session_company_id()
+        if company_id is None:
+            return jsonify({"error": "Company context is required."}), 403
         try:
-            return jsonify({"users": admin_service.list_users()})
+            return jsonify({"users": admin_service.list_users(company_id)})
         except Exception:
             return jsonify({"error": "Unable to load users"}), 503
 
@@ -407,6 +408,11 @@ def create_app(test_config=None):
     @admin_required
     def api_admin_create_user():
         action = "CREATE_USER"
+        company_id = _session_company_id()
+        if company_id is None:
+            _audit_admin_action(action, "failed")
+            return jsonify({"error": "Company context is required."}), 403
+
         payload, validation_error = _validate_create_user_payload(
             request.get_json(silent=True)
         )
@@ -415,7 +421,7 @@ def create_app(test_config=None):
             return jsonify(validation_error), 400
 
         try:
-            user = admin_service.create_user(**payload)
+            user = admin_service.create_user(company_id=company_id, **payload)
         except admin_service.DuplicateEmailError:
             _audit_admin_action(action, "failed")
             return jsonify({"error": "Email is already in use."}), 409
@@ -439,6 +445,11 @@ def create_app(test_config=None):
     @admin_required
     def api_admin_update_user(user_id):
         action = "UPDATE_USER"
+        company_id = _session_company_id()
+        if company_id is None:
+            _audit_admin_action(action, "failed")
+            return jsonify({"error": "Company context is required."}), 403
+
         changes, validation_error = _validate_update_user_payload(
             request.get_json(silent=True)
         )
@@ -447,7 +458,7 @@ def create_app(test_config=None):
             return jsonify(validation_error), 400
 
         try:
-            user = admin_service.update_user(user_id, changes)
+            user = admin_service.update_user(user_id, changes, company_id)
         except admin_service.UserNotFoundError:
             _audit_admin_action(action, "failed")
             return jsonify({"error": "User not found."}), 404
@@ -468,12 +479,17 @@ def create_app(test_config=None):
     @admin_required
     def api_admin_disable_user(user_id):
         action = "DISABLE_USER"
+        company_id = _session_company_id()
+        if company_id is None:
+            _audit_admin_action(action, "failed")
+            return jsonify({"error": "Company context is required."}), 403
+
         if user_id == session.get("user_id"):
             _audit_admin_action(action, "failed")
             return jsonify({"error": "Administrators cannot disable themselves."}), 400
 
         try:
-            user, already_disabled = admin_service.disable_user(user_id)
+            user, already_disabled = admin_service.disable_user(user_id, company_id)
         except admin_service.UserNotFoundError:
             _audit_admin_action(action, "failed")
             return jsonify({"error": "User not found."}), 404

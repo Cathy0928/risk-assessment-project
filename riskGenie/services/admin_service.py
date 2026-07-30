@@ -8,7 +8,7 @@ except ImportError:  # Allows imports when running from inside riskGenie/.
     from supabase_client import get_supabase_admin_client
 
 
-USER_FIELDS = "id, username, email, role_id, company_id"
+USER_FIELDS = "id, username, email, role_id, company_id, is_active"
 USER_ACTIVE_FIELD = "is_active"
 
 
@@ -104,21 +104,18 @@ def _duplicate_email_error(exc):
     )
 
 
-def _get_user(client, user_id, include_active=False):
-    fields = USER_FIELDS
-    if include_active:
-        fields = f"{fields}, {USER_ACTIVE_FIELD}"
-
+def _get_user(client, user_id, company_id):
     try:
         response = (
             client.table("users")
-            .select(fields)
+            .select(USER_FIELDS)
             .eq("id", user_id)
+            .eq("company_id", company_id)
             .limit(1)
             .execute()
         )
     except Exception as exc:
-        if include_active and _missing_active_column(exc):
+        if _missing_active_column(exc):
             raise UserStatusConfigError(
                 "public.users.is_active is required to disable accounts."
             ) from exc
@@ -137,11 +134,12 @@ def list_roles():
     return response.data or []
 
 
-def list_users():
+def list_users(company_id):
     response = (
         get_supabase_admin_client()
         .table("users")
-        .select("id, username, email, role_id, company_id")
+        .select(USER_FIELDS)
+        .eq("company_id", company_id)
         .execute()
     )
     return response.data or []
@@ -193,19 +191,17 @@ def create_user(username, email, password, role_id, company_id):
         raise ProfileCreationError("Unable to create the user profile.") from exc
 
 
-def update_user(user_id, changes):
+def update_user(user_id, changes, company_id):
     client = get_supabase_admin_client()
-    existing = _get_user(client, user_id)
+    existing = _get_user(client, user_id, company_id)
     if not existing:
         raise UserNotFoundError("User not found.")
-
-    if "company_id" in changes and not _company_exists(client, changes["company_id"]):
-        raise CompanyNotFoundError("Company does not exist.")
 
     response = (
         client.table("users")
         .update(changes)
         .eq("id", user_id)
+        .eq("company_id", company_id)
         .execute()
     )
     updated = _first_record(response)
@@ -214,9 +210,9 @@ def update_user(user_id, changes):
     return updated
 
 
-def disable_user(user_id):
+def disable_user(user_id, company_id):
     client = get_supabase_admin_client()
-    user = _get_user(client, user_id, include_active=True)
+    user = _get_user(client, user_id, company_id)
     if not user:
         raise UserNotFoundError("User not found.")
     if user.get(USER_ACTIVE_FIELD) is False:
@@ -227,6 +223,7 @@ def disable_user(user_id):
             client.table("users")
             .update({USER_ACTIVE_FIELD: False})
             .eq("id", user_id)
+            .eq("company_id", company_id)
             .execute()
         )
     except Exception as exc:
