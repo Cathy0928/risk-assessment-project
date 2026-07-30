@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>帳號管理 - RiskGenie</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_users.css') }}">
+    <script src="{{ url_for('static', filename='js/admin_users.js') }}" defer></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <h1>RiskGenie</h1>
+        <nav aria-label="主要導覽">
+            <a href="{{ url_for('home') }}" class="menu-btn">首頁</a>
+            <button type="button" class="menu-btn">風險評鑑</button>
+            <a href="{{ url_for('asset_summary') }}" class="menu-btn">資產總覽</a>
+            <button type="button" class="menu-btn">弱點管理</button>
+            <button type="button" class="menu-btn">威脅管理</button>
+            <button type="button" class="menu-btn">風險計算</button>
+            <button type="button" class="menu-btn">風險報表</button>
+            <a href="{{ url_for('weight_setting') }}" class="menu-btn">權重設定</a>
+            <a href="{{ url_for('admin_users_page') }}" class="menu-btn active" aria-current="page">帳號管理</a>
+        </nav>
+
+        <div class="session-user">
+            <span>目前登入：{{ session.get('username', '使用者') }}</span>
+            <form method="POST" action="{{ url_for('logout') }}">
+                <button type="submit" class="logout-btn">登出</button>
+            </form>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="admin-shell">
+            <header class="page-header">
+                <div>
+                    <p class="page-eyebrow">系統管理</p>
+                    <h2>帳號管理</h2>
+                </div>
+                <button type="button" id="refresh-users" class="secondary-btn">重新整理</button>
+            </header>
+
+            <div id="page-message" class="page-message" role="status" aria-live="polite" hidden></div>
+
+            <section class="account-form-panel" aria-labelledby="create-user-heading">
+                <div class="section-heading">
+                    <h3 id="create-user-heading">新增帳號</h3>
+                </div>
+                <form id="create-user-form">
+                    <div class="form-grid">
+                        <label>
+                            <span>使用者名稱</span>
+                            <input type="text" name="username" required autocomplete="off">
+                        </label>
+                        <label>
+                            <span>電子郵件</span>
+                            <input type="email" name="email" required autocomplete="off">
+                        </label>
+                        <label>
+                            <span>初始密碼</span>
+                            <input type="password" name="password" minlength="8" required autocomplete="new-password">
+                        </label>
+                        <label>
+                            <span>角色</span>
+                            <select name="role_id" id="create-role" required disabled>
+                                <option value="">載入角色中</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>公司 ID</span>
+                            <input type="number" name="company_id" min="1" step="1" required>
+                        </label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" id="create-user-submit" class="primary-btn">新增帳號</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="users-section" aria-labelledby="user-list-heading">
+                <div class="section-heading list-heading">
+                    <div>
+                        <h3 id="user-list-heading">使用者清單</h3>
+                        <p id="user-count" class="record-count">0 位使用者</p>
+                    </div>
+                </div>
+
+                <div id="users-loading" class="loading-state" aria-live="polite">正在載入使用者資料</div>
+                <div class="table-scroll" id="users-table-container" hidden>
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">使用者名稱</th>
+                                <th scope="col">電子郵件</th>
+                                <th scope="col">角色</th>
+                                <th scope="col">公司</th>
+                                <th scope="col">狀態</th>
+                                <th scope="col">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-body"></tbody>
+                    </table>
+                </div>
+                <p id="users-empty" class="empty-state" hidden>目前沒有使用者資料。</p>
+            </section>
+        </div>
+    </main>
+</body>
+</html>

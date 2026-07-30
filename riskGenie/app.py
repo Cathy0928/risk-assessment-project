@@ -382,6 +382,11 @@ def create_app(test_config=None):
             }
         )
 
+    @app.route("/admin/users", methods=["GET"])
+    @admin_required
+    def admin_users_page():
+        return render_template("admin_users.html")
+
     @app.route("/api/admin/roles", methods=["GET"])
     @admin_required
     def api_admin_roles():
