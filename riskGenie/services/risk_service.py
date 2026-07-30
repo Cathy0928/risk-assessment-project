@@ -15,14 +15,12 @@ except ImportError:
     try:
         from services.supabase_client import get_supabase_client
     except ImportError:
-        # 備用降級防護：若真的載入失敗，提供提示
         def get_supabase_client():
             raise RuntimeError("無法載入 supabase_client，請檢查檔案路徑。")
 
-### 設定 Log 紀錄
 logger = logging.getLogger(__name__)
 
-# 本地降級備份檔路徑（定義在專案的 riskGenie/data/ 目錄下）
+# 本地降級備份檔路徑
 FALLBACK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 FALLBACK_FILE = os.path.join(FALLBACK_DIR, "weight_settings_fallback.json")
 
@@ -32,10 +30,7 @@ class RiskService:
     def get_weight_settings(company_id: int) -> dict:
         """
         根據公司 ID 讀取權重與公式設定。
-        若 Supabase 查詢失敗，會自動切換為讀取本地端 JSON 備用檔（或返回系統預設值），
-        確保系統絕對不會因為網路異常或連線問題而崩潰。
         """
-        # 系統預設值 (最大值法，C, I, A 權重平均分配)
         default_settings = {
             "company_id": company_id,
             "formula_type": "max",
@@ -46,12 +41,11 @@ class RiskService:
 
         try:
             supabase = get_supabase_client()
-            # 查詢 Supabase 資料庫中該公司的權重設定 [1]
             response = supabase.table("weight_settings").select("*").eq("company_id", company_id).execute()
             
             if response.data and len(response.data) > 0:
-                data = response.data
-                # 轉為 float 確保數值計算正常
+                # 💡 修復：response.data 是清單 [0]，需取第 0 筆資料
+                data = response.data[0]
                 return {
                     "company_id": int(data.get("company_id", company_id)),
                     "formula_type": str(data.get("formula_type", "max")),
@@ -60,7 +54,7 @@ class RiskService:
                     "weight_a": float(data.get("weight_a", 0.3333))
                 }
             else:
-                # 若 Supabase 沒有這家公司的資料，則為主動建立一筆預設值
+                # 主動建立一筆預設值
                 try:
                     insert_data = {
                         "company_id": company_id,
@@ -77,16 +71,14 @@ class RiskService:
                 return default_settings
 
         except Exception as e:
-            logger.error(f"Supabase 查詢 weight_settings 失敗，啟用降級防護機制: {e}")
+            logger.error(f"Supabase 查詢 weight_settings 失敗，啟用降級機制: {e}")
             
-            # 【降級防護機制】嘗試讀取本地端 JSON 備用檔 [4]
             if os.path.exists(FALLBACK_FILE):
                 try:
                     with open(FALLBACK_FILE, "r", encoding="utf-8") as f:
                         fallback_data = json.load(f)
                         company_key = str(company_id)
                         if company_key in fallback_data:
-                            logger.info(f"成功從本地備份檔讀取公司 {company_id} 的權重設定。")
                             return fallback_data[company_key]
                 except Exception as json_err:
                     logger.error(f"讀取本地權重備份檔失敗: {json_err}")
@@ -97,9 +89,7 @@ class RiskService:
     def save_weight_settings(company_id: int, formula_type: str, weight_c: float, weight_i: float, weight_a: float) -> dict:
         """
         儲存或更新給定公司 ID 的權重公式設定。
-        同時將設定備份到本地，供降級防護使用。
         """
-        # 規格化數值
         weight_c = float(weight_c)
         weight_i = float(weight_i)
         weight_a = float(weight_a)
@@ -113,16 +103,14 @@ class RiskService:
         }
 
         supabase_success = False
-        # 1. 嘗試寫入雲端 Supabase 資料庫
         try:
             supabase = get_supabase_client()
-            # 檢查該公司是否已有權重設定紀錄
             check_res = supabase.table("weight_settings").select("id").eq("company_id", company_id).execute()
             
             now_str = datetime.utcnow().isoformat()
             if check_res.data and len(check_res.data) > 0:
-                # 已有紀錄 -> 執行 UPDATE [1]
-                record_id = check_res.data["id"]
+                # 💡 修復：取 list[0]["id"]
+                record_id = check_res.data[0]["id"]
                 supabase.table("weight_settings").update({
                     "formula_type": formula_type,
                     "weight_c": weight_c,
@@ -131,7 +119,6 @@ class RiskService:
                     "updated_at": now_str
                 }).eq("id", record_id).execute()
             else:
-                # 查無紀錄 -> 執行 INSERT [1]
                 supabase.table("weight_settings").insert({
                     "company_id": company_id,
                     "formula_type": formula_type,
@@ -144,9 +131,9 @@ class RiskService:
             supabase_success = True
             logger.info(f"公司 {company_id} 權重設定已成功儲存至 Supabase。")
         except Exception as e:
-            logger.error(f"無法儲存權重設定到 Supabase，將啟用降級備份機制: {e}")
+            logger.error(f"無法儲存權重設定到 Supabase，啟用降級機制: {e}")
 
-        # 2. 同步寫入本地 JSON 備份檔（確保雲端斷線時依然能運作）
+        # 2. 同步寫入本地 JSON 備份檔
         try:
             os.makedirs(os.path.dirname(FALLBACK_FILE), exist_ok=True)
             fallback_data = {}
