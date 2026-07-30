@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-檔名：risk_engine.py
-路徑：riskgenie/modules/risk_engine.py
-描述：負責風險值（Risk Score）的核心計算邏輯與風險等級判定。
+負責風險值的核心計算邏輯與風險等級判定。
      支援四大評鑑公式：最大值法、總合法、平均法、加權平均法。
 """
 
