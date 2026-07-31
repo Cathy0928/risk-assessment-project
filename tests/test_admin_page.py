@@ -62,6 +62,14 @@ def test_admin_users_page_allows_admin(client):
     assert b'id="users-body"' in response.data
     assert b"js/admin_users.js" in response.data
     assert b'name="company_id"' not in response.data
+    assert "公司".encode("utf-8") not in response.data
+
+
+def test_admin_users_script_does_not_render_company_id(client):
+    response = client.get("/static/js/admin_users.js")
+
+    assert response.status_code == 200
+    assert b"company_id" not in response.data
 
 
 def test_admin_users_page_requires_company_context(client):

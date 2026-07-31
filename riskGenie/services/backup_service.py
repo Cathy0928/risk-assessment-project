@@ -98,7 +98,7 @@ def _is_sensitive_field(field_name):
     normalized = str(field_name).casefold()
     compacted = "".join(character for character in normalized if character.isalnum())
     return any(marker in normalized for marker in SENSITIVE_FIELD_MARKERS) or (
-        "apikey" in compacted
+        "apikey" in compacted or "key" in compacted
     )
 
 
@@ -180,7 +180,11 @@ def _json_bytes(value):
 
 def create_backup_archive(generated_by, company_id, now=None):
     """Query configured tables and return a sanitized in-memory ZIP export."""
-    if company_id is None:
+    if (
+        not isinstance(company_id, int)
+        or isinstance(company_id, bool)
+        or company_id <= 0
+    ):
         raise MissingCompanyScopeError("A company scope is required.")
 
     failed_tables = []

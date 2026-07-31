@@ -157,6 +157,8 @@ def test_disabled_user_cannot_create_session(client, app_module, monkeypatch):
     with client.session_transaction() as sess:
         assert "logged_in" not in sess
         assert "user_id" not in sess
+        assert "role" not in sess
+        assert "company_id" not in sess
 
 
 def test_login_success_creates_session(client, app_module, monkeypatch):
@@ -173,6 +175,7 @@ def test_login_success_creates_session(client, app_module, monkeypatch):
         assert sess["user_id"] == "auth-user-id"
         assert sess["username"] == "Peggy"
         assert sess["email"] == "peggy@example.com"
+        assert sess["role"] == "admin"
         assert sess["role_name"] == "admin"
         assert sess["company_id"] == 7
         assert sess["logged_in"] is True
@@ -201,6 +204,8 @@ def test_api_auth_me_returns_session_user_when_authenticated(client):
     with client.session_transaction() as sess:
         sess["logged_in"] = True
         sess["user_id"] = "auth-user-id"
+        sess["role"] = "admin"
+        sess["company_id"] = 7
         sess["username"] = "Peggy"
         sess["email"] = "peggy@example.com"
         sess["role_name"] = "admin"
@@ -230,6 +235,8 @@ def test_post_logout_clears_session(client):
     with client.session_transaction() as sess:
         assert "logged_in" not in sess
         assert "user_id" not in sess
+        assert "role" not in sess
+        assert "company_id" not in sess
 
 
 def test_get_logout_does_not_log_out(client):
