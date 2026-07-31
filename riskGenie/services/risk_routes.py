@@ -133,3 +133,19 @@ def get_historical_assessments_api():
     if not session.get("logged_in"):
         return jsonify({"error": "未登入系統"}), 401
     return jsonify([]), 200
+
+#風險評鑑AI建議
+@risk_bp.route("/ai-advice", methods=["POST"])
+def ai_advice():
+
+    data = request.get_json()
+
+    result = generate_risk_advice(data)
+
+    return jsonify(result)
+
+#報表
+@risk_bp.route("/export", methods=["GET"])
+def export():
+
+    return export_report()

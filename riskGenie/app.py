@@ -90,10 +90,14 @@ def create_app():
     )
 
 
-    supabase = create_client(
-        SUPABASE_URL,
-        SUPABASE_KEY
-    )
+    if SUPABASE_URL and SUPABASE_KEY:
+        supabase = create_client(
+            SUPABASE_URL,
+            SUPABASE_KEY
+        )
+    else:
+        supabase = None
+        print("⚠️ Supabase 未設定，跳過連線")
 
 
     # ===============================
