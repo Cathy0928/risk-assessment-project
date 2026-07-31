@@ -320,23 +320,7 @@ def create_app(test_config=None):
         app.config.update(test_config)
     _validate_runtime_config(app)
 
-<<<<<<< HEAD
-    SUPABASE_KEY = os.getenv(
-        "SUPABASE_ANON_KEY"
-    )
-
-
-    if SUPABASE_URL and SUPABASE_KEY:
-        supabase = create_client(
-            SUPABASE_URL,
-            SUPABASE_KEY
-        )
-    else:
-        supabase = None
-        print("⚠️ Supabase 未設定，跳過連線")
-=======
     supabase = _LazySupabaseClient()
->>>>>>> 0e0c0b21d5c9ae1cf7c6df842b7a1dbd363ed12c
 
 
     # ===============================
