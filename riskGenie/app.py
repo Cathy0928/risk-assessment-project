@@ -13,12 +13,18 @@ from flask import (
 
 from functools import wraps
 from datetime import datetime
+from pathlib import Path
 
 import os
 import re
 import sys
 import webbrowser
 import pandas as pd
+from dotenv import load_dotenv
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
 # ===============================
