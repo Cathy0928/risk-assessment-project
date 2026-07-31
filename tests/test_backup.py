@@ -195,7 +195,7 @@ def is_sensitive_field(field_name):
     return any(
         marker in normalized
         for marker in ("password", "secret", "token", "api_key")
-    ) or "apikey" in compacted
+    ) or "apikey" in compacted or "key" in compacted
 
 
 def assert_no_sensitive_fields(value):
@@ -224,8 +224,13 @@ def test_backup_export_forbids_non_admin(client):
     assert response.get_json() == {"error": "Forbidden"}
 
 
-def test_backup_export_requires_company_in_session(
-    client, app_module, monkeypatch
+@pytest.mark.parametrize("company_id", [None, 0, -1, "7", True])
+def test_backup_export_requires_valid_company_in_session(
+    client,
+    app_module,
+    monkeypatch,
+    isolate_external_services,
+    company_id,
 ):
     called = False
 
@@ -239,7 +244,7 @@ def test_backup_export_requires_company_in_session(
         "create_backup_archive",
         fail_if_called,
     )
-    login_as(client, "系統管理員", company_id=None)
+    login_as(client, "系統管理員", company_id=company_id)
 
     response = client.post(
         "/api/admin/backups/export?company_id=99",
@@ -249,6 +254,8 @@ def test_backup_export_requires_company_in_session(
     assert response.status_code == 403
     assert response.get_json() == {"error": "Company scope is required."}
     assert called is False
+    assert isolate_external_services[-1]["action"] == "EXPORT_BACKUP"
+    assert isolate_external_services[-1]["status"] == "failed"
 
 
 def test_admin_can_download_backup_zip(client, app_module, monkeypatch):
@@ -327,6 +334,7 @@ def test_backup_removes_sensitive_fields_from_every_json(
             "access_token": "LEAK_ACCESS",
             "refreshToken": "LEAK_REFRESH",
             "api-key": "LEAK_API_KEY",
+            "private_key": "LEAK_PRIVATE_KEY",
             "display_name": "Safe User",
             "company_id": 7,
         }
@@ -357,6 +365,7 @@ def test_backup_removes_nested_sensitive_fields(
                 "credentials": {
                     "client_secret": "LEAK_NESTED_SECRET",
                     "apiKey": "LEAK_NESTED_KEY",
+                    "signingKey": "LEAK_SIGNING_KEY",
                 },
                 "sessions": [
                     {

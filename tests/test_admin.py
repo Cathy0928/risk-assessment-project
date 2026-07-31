@@ -140,7 +140,7 @@ def test_admin_users_forbids_non_admin(client):
     assert response.get_json() == {"error": "Forbidden"}
 
 
-def test_admin_can_list_roles(client, app_module, monkeypatch):
+def test_admin_can_list_roles(client, app_module, monkeypatch, mock_audit_log):
     expected_roles = [
         {"id": 1, "role_name": "系統管理員"},
         {"id": 2, "role_name": "一般使用者"},
@@ -152,9 +152,13 @@ def test_admin_can_list_roles(client, app_module, monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json() == {"roles": expected_roles}
+    assert mock_audit_log[-1]["action"] == "LIST_ROLES"
+    assert mock_audit_log[-1]["status"] == "success"
 
 
-def test_admin_can_list_users(client, app_module, monkeypatch):
+def test_admin_can_list_users(
+    client, app_module, monkeypatch, mock_audit_log
+):
     expected_users = [
         {
             "id": "user-id",
@@ -179,6 +183,8 @@ def test_admin_can_list_users(client, app_module, monkeypatch):
     assert response.status_code == 200
     assert response.get_json() == {"users": expected_users}
     assert received == {"company_id": 7}
+    assert mock_audit_log[-1]["action"] == "LIST_USERS"
+    assert mock_audit_log[-1]["status"] == "success"
 
 
 def test_list_users_service_filters_company_and_returns_is_active(
@@ -225,6 +231,11 @@ def test_list_users_service_filters_company_and_returns_is_active(
 def test_users_operations_require_session_company(client, app_module, monkeypatch):
     monkeypatch.setattr(
         app_module.admin_service,
+        "list_roles",
+        lambda: pytest.fail("Roles service must not be called."),
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
         "list_users",
         lambda *_args: pytest.fail("List service must not be called."),
     )
@@ -248,6 +259,7 @@ def test_users_operations_require_session_company(client, app_module, monkeypatc
         sess.pop("company_id")
 
     responses = [
+        client.get("/api/admin/roles"),
         client.get("/api/admin/users"),
         client.post("/api/admin/users", json=new_user_payload()),
         client.patch(
@@ -257,14 +269,22 @@ def test_users_operations_require_session_company(client, app_module, monkeypatc
         client.post("/api/admin/users/target-user/disable"),
     ]
 
-    assert [response.status_code for response in responses] == [403, 403, 403, 403]
+    assert [response.status_code for response in responses] == [
+        403,
+        403,
+        403,
+        403,
+        403,
+    ]
     assert all(
         response.get_json() == {"error": "Company context is required."}
         for response in responses
     )
 
 
-def test_admin_roles_database_error_returns_503(client, app_module, monkeypatch):
+def test_admin_roles_database_error_returns_503(
+    client, app_module, monkeypatch, mock_audit_log
+):
     def raise_database_error():
         raise RuntimeError("database unavailable")
 
@@ -275,6 +295,8 @@ def test_admin_roles_database_error_returns_503(client, app_module, monkeypatch)
 
     assert response.status_code == 503
     assert response.get_json() == {"error": "Unable to load roles"}
+    assert mock_audit_log[-1]["action"] == "LIST_ROLES"
+    assert mock_audit_log[-1]["status"] == "failed"
 
 
 def test_create_user_requires_login(client):
@@ -725,6 +747,38 @@ def test_disable_user_returns_explicit_already_disabled_result(
 
     assert response.status_code == 200
     assert response.get_json()["already_disabled"] is True
+
+
+def test_disable_user_service_does_not_update_already_disabled_user(
+    app_module, monkeypatch
+):
+    fake_client = TenantClient(
+        {
+            "users": [
+                {
+                    "id": "disabled-user",
+                    "username": "Disabled",
+                    "company_id": 7,
+                    "is_active": False,
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        app_module.admin_service,
+        "get_supabase_admin_client",
+        lambda: fake_client,
+    )
+
+    user, already_disabled = app_module.admin_service.disable_user(
+        "disabled-user",
+        7,
+    )
+
+    assert already_disabled is True
+    assert user["is_active"] is False
+    assert len(fake_client.executed_queries) == 1
+    assert fake_client.executed_queries[0]["update_values"] is None
 
 
 def test_disable_missing_user_returns_404(client, app_module, monkeypatch):
