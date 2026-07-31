@@ -189,7 +189,7 @@ select:disabled {
 
 .users-table {
     width: 100%;
-    min-width: 880px;
+    min-width: 760px;
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -213,27 +213,23 @@ select:disabled {
 }
 
 .users-table th:nth-child(1) {
-    width: 17%;
+    width: 19%;
 }
 
 .users-table th:nth-child(2) {
-    width: 24%;
+    width: 28%;
 }
 
 .users-table th:nth-child(3) {
-    width: 18%;
+    width: 20%;
 }
 
 .users-table th:nth-child(4) {
-    width: 11%;
+    width: 14%;
 }
 
 .users-table th:nth-child(5) {
-    width: 12%;
-}
-
-.users-table th:nth-child(6) {
-    width: 18%;
+    width: 19%;
 }
 
 .users-table tr.is-disabled td {
@@ -262,12 +258,6 @@ select:disabled {
     color: #8b1f24;
     background: #fff1f1;
     border-color: #e4a6aa;
-}
-
-.status-unknown {
-    color: #5c4c19;
-    background: #fff8dd;
-    border-color: #d7c16e;
 }
 
 .row-actions {

@@ -141,10 +141,8 @@
 
         if (isEditing) {
             appendCell(row, createRoleSelect(user.role_id));
-            appendTextCell(row, user.company_id == null ? "未提供" : String(user.company_id));
         } else {
             appendTextCell(row, getRoleName(user.role_id));
-            appendTextCell(row, user.company_id == null ? "未提供" : String(user.company_id));
         }
 
         appendCell(row, createStatusBadge(user.is_active));
