@@ -150,6 +150,67 @@ def test_weight_api_save_ignores_client_company_id(client, monkeypatch):
     assert received["formula_type"] == "weighted_average"
 
 
+def test_weight_page_missing_company_id_returns_403(client, monkeypatch):
+    from riskGenie.services import risk_routes
+
+    monkeypatch.setattr(
+        risk_routes.RiskService,
+        "save_weight_settings",
+        lambda **_kwargs: pytest.fail("Missing company_id must not save."),
+    )
+    login_as(client, company_id=None)
+
+    response = client.post("/weight_setting", data=weight_payload())
+
+    assert response.status_code == 403
+    assert "帳號缺少公司識別資訊" in response.get_data(as_text=True)
+
+
+def test_weight_page_post_uses_same_percent_normalization(client, monkeypatch):
+    from riskGenie.services import risk_routes
+
+    received = {}
+    monkeypatch.setattr(
+        risk_routes.RiskService,
+        "save_weight_settings",
+        lambda **kwargs: received.update(kwargs) or {"success": True},
+    )
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/weight_setting",
+        data=weight_payload(weight_c="30", weight_i="30", weight_a="40"),
+    )
+
+    assert response.status_code == 302
+    assert received["company_id"] == 7
+    assert (
+        received["weight_c"],
+        received["weight_i"],
+        received["weight_a"],
+    ) == (0.3, 0.3, 0.4)
+
+
+def test_weight_page_post_rejects_invalid_formula_like_json_api(
+    client, monkeypatch
+):
+    from riskGenie.services import risk_routes
+
+    monkeypatch.setattr(
+        risk_routes.RiskService,
+        "save_weight_settings",
+        lambda **_kwargs: pytest.fail("Invalid HTML form data must not save."),
+    )
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/weight_setting",
+        data=weight_payload(formula_type="median"),
+    )
+
+    assert response.status_code == 400
+
+
 def test_weighted_avg_is_normalized_before_save(client, monkeypatch):
     from riskGenie.services import risk_routes
 
@@ -342,6 +403,35 @@ def test_company_context_required_for_ai_export_and_risk_apis(
         "error": "帳號缺少公司識別資訊",
         "code": "COMPANY_CONTEXT_REQUIRED",
     }
+
+
+def test_ai_missing_company_id_does_not_call_gemini(client, monkeypatch):
+    from riskGenie.services import risk_routes
+
+    monkeypatch.setattr(
+        risk_routes,
+        "generate_risk_advice",
+        lambda _payload: pytest.fail("Gemini must not be called."),
+    )
+    monkeypatch.setattr(
+        risk_routes,
+        "is_gemini_configured",
+        lambda: pytest.fail("Gemini config must not be checked."),
+    )
+    login_as(client, company_id=None)
+
+    response = client.post(
+        "/ai-advice",
+        json={
+            "asset_name": "Web Server",
+            "cia": "C:5 I:4 A:5",
+            "cvss": 9.8,
+            "risk_score": 49,
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["code"] == "COMPANY_CONTEXT_REQUIRED"
 
 
 def test_risk_service_rejects_invalid_company_id():

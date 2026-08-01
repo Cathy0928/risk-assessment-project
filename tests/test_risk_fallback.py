@@ -42,6 +42,37 @@ def test_weight_fallback_save_creates_directory_and_file(tmp_path, monkeypatch):
     assert saved["7"]["company_id"] == 7
 
 
+def test_weight_fallback_data_is_separated_by_company_id(tmp_path, monkeypatch):
+    from riskGenie.services import risk_service
+
+    def fail_supabase():
+        raise RuntimeError("database unavailable")
+
+    fallback_file = tmp_path / "data" / "weight_settings_fallback.json"
+    monkeypatch.setattr(risk_service, "get_supabase_client", fail_supabase)
+    monkeypatch.setattr(risk_service, "FALLBACK_FILE", str(fallback_file))
+
+    risk_service.RiskService.save_weight_settings(
+        company_id=7,
+        formula_type="weighted_average",
+        weight_c=0.3,
+        weight_i=0.3,
+        weight_a=0.4,
+    )
+    risk_service.RiskService.save_weight_settings(
+        company_id=8,
+        formula_type="sum",
+        weight_c=0.2,
+        weight_i=0.3,
+        weight_a=0.5,
+    )
+
+    saved = json.loads(fallback_file.read_text(encoding="utf-8"))
+    assert set(saved) == {"7", "8"}
+    assert saved["7"]["formula_type"] == "weighted_average"
+    assert saved["8"]["formula_type"] == "sum"
+
+
 def test_runtime_weight_fallback_file_is_ignored_and_example_is_empty():
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     example = ROOT / "riskGenie" / "data" / "weight_settings_fallback.example.json"
