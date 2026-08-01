@@ -1,0 +1,136 @@
+/* ================= 全局樣式重置 (保持與先前一致) ================= */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background-color: #ffffff;
+    color: #000;
+}
+
+/* ================= 左側邊欄 Sidebar ================= */
+.sidebar {
+    width: 200px;
+    background-color: #7d7d7d;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 25px 0 20px 0;
+    flex-shrink: 0;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    padding: 0 20px 30px 20px;
+}
+
+.user-profile .avatar {
+    font-size: 38px;
+    margin-right: 12px;
+}
+
+.user-profile .brand-name {
+    font-size: 24px;
+    font-weight: 500;
+}
+
+.sidebar .menu ul {
+    list-style: none;
+}
+
+.sidebar .menu li a {
+    display: block;
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 18px;
+    padding: 12px 25px;
+    letter-spacing: 2px;
+    transition: background-color 0.2s;
+}
+
+.sidebar .menu li a:hover,
+.sidebar .menu li a.active {
+    background-color: #696969; /* 選取狀態加深背景 */
+}
+
+.sidebar .menu li a.disabled {
+    color: #a0a0a0;
+    cursor: not-allowed;
+}
+
+.sidebar-footer {
+    padding: 10px 25px 0 25px;
+}
+
+.settings-btn {
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ================= 右側主要內容區 (AI 建議專用) ================= */
+.main-content {
+    flex-grow: 1;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.page-title {
+    font-size: 32px;
+    font-weight: 500;
+    margin-bottom: 80px;
+    color: #000;
+    letter-spacing: 2px;
+}
+
+/* 卡片按鈕區域 */
+.card-options-container {
+    display: flex;
+    gap: 60px; /* 兩大按鈕的間距 */
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
+/* 圓角大方塊按鈕 */
+.option-card {
+    width: 200px;
+    height: 200px;
+    border: 1px solid #333333;
+    border-radius: 28px; /* 圓角設定 */
+    background-color: #ffffff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    color: #000;
+    font-size: 28px;
+    font-weight: 400;
+    letter-spacing: 2px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.03);
+    transition: all 0.25s ease;
+}
+
+/* Hover 懸停效果 */
+.option-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0px 8px 18px rgba(0, 0, 0, 0.1);
+    background-color: #fafafa;
+    border-color: #000;
+}
+
+.option-card:active {
+    transform: translateY(-1px);
+}
