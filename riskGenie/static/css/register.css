@@ -1,0 +1,141 @@
+/* 全局樣式重置 */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+}
+
+/* 深灰色外層背景 */
+body {
+    background-color: #6c6c6c;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+/* 白色圓角卡片 */
+.register-card {
+    background-color: #ffffff;
+    width: 100%;
+    max-width: 720px;
+    border-radius: 20px;
+    padding: 50px 60px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* 大標題 */
+.brand-title {
+    font-size: 42px;
+    font-weight: 500;
+    color: #000000;
+    margin-bottom: 40px;
+    letter-spacing: 2px;
+    text-align: center;
+}
+
+/* 表單容器 */
+.register-form {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+}
+
+.input-group {
+    width: 100%;
+    position: relative;
+}
+
+/* 輸入框通用樣式 */
+.register-form input,
+.register-form select {
+    width: 100%;
+    height: 52px;
+    border: 1px solid #333333;
+    border-radius: 26px; /* 圓膠囊形狀 */
+    padding: 0 30px;
+    font-size: 22px;
+    color: #333333;
+    outline: none;
+    background-color: #ffffff;
+    transition: all 0.2s ease;
+}
+
+/* Placeholder 文字顏色與細節 */
+.register-form input::placeholder {
+    color: #757575;
+    font-size: 22px;
+}
+
+/* Focus 聚焦效果 */
+.register-form input:focus,
+.register-form select:focus {
+    border-color: #000000;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 下拉選單特別處置 */
+.select-wrapper {
+    position: relative;
+}
+
+.register-form select {
+    appearance: none; /* 移除預設箭頭 */
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: pointer;
+    color: #757575; /* 預設未選擇時的顏色 */
+}
+
+/* 選擇選項後的字體顏色 */
+.register-form select:valid {
+    color: #333333;
+}
+
+/* 自訂純 CSS 黑色倒三角形箭頭 */
+.select-wrapper::after {
+    content: "";
+    position: absolute;
+    right: 30px;
+    top: 50%;
+    transform: translateY(-30%);
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-top: 15px solid #666666; /* 倒三角形圖示 */
+    pointer-events: none;
+}
+
+/* 按鈕區 */
+.btn-group {
+    margin-top: 10px;
+}
+
+.btn-submit {
+    background-color: #ffffff;
+    border: 1px solid #333333;
+    border-radius: 18px;
+    padding: 6px 36px;
+    font-size: 20px;
+    color: #000000;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-submit:hover {
+    background-color: #f0f0f0;
+    transform: translateY(-1px);
+}
+
+.btn-submit:active {
+    transform: translateY(0);
+}

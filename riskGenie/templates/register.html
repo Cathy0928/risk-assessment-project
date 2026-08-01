@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>註冊 - RiskGenie 評評理</title>
+    <link rel="stylesheet" href="register.css">
+</head>
+<body>
+
+    <!-- 註冊卡片容器 -->
+    <div class="register-card">
+        <h1 class="brand-title">RiskGenie 評評理</h1>
+
+        <form action="/register" method="POST" class="register-form">
+            <!-- 帳號 -->
+            <div class="input-group">
+                <input type="text" name="username" placeholder="帳  號" required autocomplete="off">
+            </div>
+
+            <!-- 密碼 -->
+            <div class="input-group">
+                <input type="password" name="password" placeholder="密  碼" required>
+            </div>
+
+            <!-- 電子郵件 -->
+            <div class="input-group">
+                <input type="email" name="email" placeholder="電子郵件" required autocomplete="off">
+            </div>
+
+            <!-- 公司名稱 -->
+            <div class="input-group">
+                <input type="text" name="company_name" placeholder="公司名稱" autocomplete="off">
+            </div>
+
+            <!-- 角色 (下拉選單) -->
+            <div class="input-group select-wrapper">
+                <select name="role_id" required>
+                    <option value="" disabled selected hidden>角  色</option>
+                    <option value="1">一般使用者</option>
+                    <option value="2">管理者</option>
+                    <option value="3">審核員</option>
+                </select>
+            </div>
+
+            <!-- 提交按鈕 -->
+            <div class="btn-group">
+                <button type="submit" class="btn-submit">完成</button>
+            </div>
+        </form>
+    </div>
+
+</body>
+</html>
