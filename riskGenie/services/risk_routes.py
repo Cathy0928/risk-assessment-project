@@ -4,10 +4,16 @@
 """
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 import logging
+import math
 
 # 💡 修復相對與絕對匯入防呆
 try:
-    from .risk_service import RiskService
+    from .risk_service import (
+        InvalidFormulaTypeError,
+        RiskService,
+        RiskServiceValidationError,
+        normalize_formula_type,
+    )
     from .risk_ai import (
         GeminiConfigurationError,
         GeminiServiceError,
@@ -16,7 +22,12 @@ try:
     )
     from .report import export_report
 except ImportError:
-    from services.risk_service import RiskService
+    from services.risk_service import (
+        InvalidFormulaTypeError,
+        RiskService,
+        RiskServiceValidationError,
+        normalize_formula_type,
+    )
     from services.risk_ai import (
         GeminiConfigurationError,
         GeminiServiceError,
@@ -28,6 +39,108 @@ except ImportError:
 risk_bp = Blueprint('risk', __name__)
 logger = logging.getLogger(__name__)
 AI_REQUIRED_FIELDS = ("asset_name", "cia", "cvss", "risk_score")
+COMPANY_CONTEXT_ERROR = "帳號缺少公司識別資訊"
+
+
+class WeightValidationError(ValueError):
+    def __init__(self, message, code):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+
+
+def _json_error(message, code, status_code):
+    return jsonify({
+        "success": False,
+        "error": message,
+        "code": code,
+    }), status_code
+
+
+def _session_company_id():
+    company_id = session.get("company_id")
+    if (
+        not isinstance(company_id, int)
+        or isinstance(company_id, bool)
+        or company_id <= 0
+    ):
+        return None
+    return company_id
+
+
+def _company_context_required_response(api_request=False):
+    if api_request:
+        return _json_error(
+            COMPANY_CONTEXT_ERROR,
+            "COMPANY_CONTEXT_REQUIRED",
+            403,
+        )
+    return COMPANY_CONTEXT_ERROR, 403
+
+
+def _coerce_weight(value, field_name):
+    if isinstance(value, bool):
+        raise WeightValidationError(
+            f"{field_name} 必須是有限且非負的數值。",
+            "INVALID_WEIGHT",
+        )
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        raise WeightValidationError(
+            f"{field_name} 必須是有限且非負的數值。",
+            "INVALID_WEIGHT",
+        )
+    if not math.isfinite(numeric_value) or numeric_value < 0:
+        raise WeightValidationError(
+            f"{field_name} 必須是有限且非負的數值。",
+            "INVALID_WEIGHT",
+        )
+    return numeric_value
+
+
+def _validate_weight_payload(data):
+    formula_type = data.get("formula_type", "max")
+    try:
+        formula_type = normalize_formula_type(formula_type)
+    except InvalidFormulaTypeError:
+        raise WeightValidationError(
+            "不支援的公式類型",
+            "INVALID_FORMULA_TYPE",
+        )
+
+    weights = {
+        "weight_c": data.get("weight_c", 0.3333),
+        "weight_i": data.get("weight_i", 0.3333),
+        "weight_a": data.get("weight_a", 0.3333),
+    }
+    weight_c = _coerce_weight(weights["weight_c"], "weight_c")
+    weight_i = _coerce_weight(weights["weight_i"], "weight_i")
+    weight_a = _coerce_weight(weights["weight_a"], "weight_a")
+
+    normalized = [weight_c, weight_i, weight_a]
+    if any(weight > 1 for weight in normalized):
+        normalized = [weight / 100.0 for weight in normalized]
+
+    if any(weight < 0 or weight > 1 for weight in normalized):
+        raise WeightValidationError(
+            "權重值必須介於 0 與 1 之間，或以 0 到 100 的百分比表示。",
+            "INVALID_WEIGHT",
+        )
+
+    total_weight = sum(normalized)
+    if formula_type == "weighted_average" and abs(total_weight - 1.0) > 0.001:
+        raise WeightValidationError(
+            "加權平均法之 C, I, A 權重總和必須為 1.0。",
+            "INVALID_WEIGHT_TOTAL",
+        )
+
+    return {
+        "formula_type": formula_type,
+        "weight_c": normalized[0],
+        "weight_i": normalized[1],
+        "weight_a": normalized[2],
+    }
 
 
 @risk_bp.route('/weight_setting', methods=['GET', 'POST'])
@@ -36,30 +149,28 @@ def weight_setting_page():
     if not session.get("logged_in"):
         return redirect(url_for('login'))
     
-    company_id = session.get("company_id", 1)
+    company_id = _session_company_id()
+    if company_id is None:
+        return _company_context_required_response(api_request=False)
 
     if request.method == 'POST':
         try:
-            if request.is_json:
-                data = request.get_json()
-            else:
-                data = request.form
-
-            formula_type = data.get("formula_type", "max")
-            weight_c = float(data.get("weight_c", 0.3333))
-            weight_i = float(data.get("weight_i", 0.3333))
-            weight_a = float(data.get("weight_a", 0.3333))
+            data = request.get_json(silent=True) if request.is_json else request.form
+            validated = _validate_weight_payload(data or {})
 
             RiskService.save_weight_settings(
                 company_id=company_id,
-                formula_type=formula_type,
-                weight_c=weight_c,
-                weight_i=weight_i,
-                weight_a=weight_a
+                formula_type=validated["formula_type"],
+                weight_c=validated["weight_c"],
+                weight_i=validated["weight_i"],
+                weight_a=validated["weight_a"]
             )
             return redirect(url_for('risk.weight_setting_page'))
-        except Exception as e:
-            return render_template('weight_setting.html', error=f"儲存失敗: {str(e)}")
+        except WeightValidationError as exc:
+            return render_template('weight_setting.html', error=exc.message), 400
+        except Exception:
+            logger.exception("權重設定頁面儲存失敗。")
+            return render_template('weight_setting.html', error="權重設定儲存失敗"), 503
 
     return render_template('weight_setting.html')
 
@@ -75,82 +186,87 @@ def risk_assessment_page():
 def get_weight_settings_api():
     """API：取得權重與公式設定"""
     if not session.get("logged_in"):
-        return jsonify({"error": "未登入系統"}), 401
+        return _json_error("未登入系統", "UNAUTHORIZED", 401)
     
-    company_id = session.get("company_id", 1)
+    company_id = _session_company_id()
+    if company_id is None:
+        return _company_context_required_response(api_request=True)
+
     try:
         settings = RiskService.get_weight_settings(company_id)
         return jsonify(settings), 200
-    except Exception as e:
-        return jsonify({"error": f"取得權重設定失敗: {str(e)}"}), 500
+    except Exception:
+        logger.exception("取得權重設定失敗。")
+        return _json_error(
+            "暫時無法取得權重設定",
+            "WEIGHT_SETTINGS_UNAVAILABLE",
+            503,
+        )
 
 
 @risk_bp.route('/api/weight-settings', methods=['POST'])
 def save_weight_settings_api():
     """API：儲存或更新權重設定"""
     if not session.get("logged_in"):
-        return jsonify({"error": "未登入系統"}), 401
+        return _json_error("未登入系統", "UNAUTHORIZED", 401)
     
-    company_id = session.get("company_id", 1)
+    company_id = _session_company_id()
+    if company_id is None:
+        return _company_context_required_response(api_request=True)
     
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "未收到有效的 JSON 請求資料"}), 400
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return _json_error(
+                "未收到有效的 JSON 請求資料",
+                "INVALID_JSON",
+                400,
+            )
 
-        formula_type = data.get("formula_type")
-        weight_c = data.get("weight_c")
-        weight_i = data.get("weight_i")
-        weight_a = data.get("weight_a")
-
-        if not formula_type:
-            return jsonify({"error": "缺少必要欄位: formula_type"}), 400
-        formula_type = str(formula_type).strip().lower()
-
-        try:
-            weight_c = float(weight_c) if weight_c is not None else 0.3333
-            weight_i = float(weight_i) if weight_i is not None else 0.3333
-            weight_a = float(weight_a) if weight_a is not None else 0.3333
-        except ValueError:
-            return jsonify({"error": "權重值必須為數值型態"}), 400
-
-        if formula_type in ("weighted_average", "weighted_avg"):
-            total_weight = weight_c + weight_i + weight_a
-            
-            if total_weight > 1.1:
-                weight_c /= 100.0
-                weight_i /= 100.0
-                weight_a /= 100.0
-                total_weight = weight_c + weight_i + weight_a
-            
-            if not (0.95 <= total_weight <= 1.05):
-                return jsonify({"error": "加權平均法之 C, I, A 權重總和必須為 1.0 (或 100%)"}), 400
+        validated = _validate_weight_payload(data)
 
         result = RiskService.save_weight_settings(
             company_id=company_id,
-            formula_type=formula_type,
-            weight_c=weight_c,
-            weight_i=weight_i,
-            weight_a=weight_a
+            formula_type=validated["formula_type"],
+            weight_c=validated["weight_c"],
+            weight_i=validated["weight_i"],
+            weight_a=validated["weight_a"]
         )
         status_code = 200 if result.get("success") else 503
         return jsonify(result), status_code
-
-    except Exception as e:
-        return jsonify({"error": f"儲存權重設定失敗: {str(e)}"}), 500
+    except WeightValidationError as exc:
+        return _json_error(exc.message, exc.code, 400)
+    except RiskServiceValidationError:
+        logger.warning("權重設定儲存驗證失敗。")
+        return _json_error(
+            "權重設定儲存失敗",
+            "WEIGHT_SETTINGS_SAVE_FAILED",
+            400,
+        )
+    except Exception:
+        logger.exception("權重設定儲存失敗。")
+        return _json_error(
+            "權重設定儲存失敗",
+            "WEIGHT_SETTINGS_SAVE_FAILED",
+            503,
+        )
 
 
 @risk_bp.route('/api/risk-assessments/calculate', methods=['POST'])
 def calculate_risk_api():
     if not session.get("logged_in"):
-        return jsonify({"error": "未登入系統"}), 401
+        return _json_error("未登入系統", "UNAUTHORIZED", 401)
+    if _session_company_id() is None:
+        return _company_context_required_response(api_request=True)
     return jsonify({"message": "風險計算 API 調用成功"}), 200
 
 
 @risk_bp.route('/api/risk-assessments', methods=['GET'])
 def get_historical_assessments_api():
     if not session.get("logged_in"):
-        return jsonify({"error": "未登入系統"}), 401
+        return _json_error("未登入系統", "UNAUTHORIZED", 401)
+    if _session_company_id() is None:
+        return _company_context_required_response(api_request=True)
     return jsonify([]), 200
 
 #風險評鑑AI建議
@@ -162,6 +278,8 @@ def ai_advice():
             "error": "Unauthorized",
             "code": "UNAUTHORIZED",
         }), 401
+    if _session_company_id() is None:
+        return _company_context_required_response(api_request=True)
 
     if not request.is_json:
         return jsonify({
@@ -223,5 +341,7 @@ def export():
             "error": "Unauthorized",
             "code": "UNAUTHORIZED",
         }), 401
+    if _session_company_id() is None:
+        return _company_context_required_response(api_request=True)
 
     return export_report()

@@ -26,11 +26,37 @@ FALLBACK_FILE = os.path.join(FALLBACK_DIR, "weight_settings_fallback.json")
 FORMULA_ALIASES = {
     "weighted_avg": "weighted_average",
 }
+VALID_FORMULA_TYPES = {"max", "sum", "avg", "weighted_average"}
+
+
+class RiskServiceValidationError(ValueError):
+    """Raised when a RiskService public method receives invalid input."""
+
+
+class InvalidCompanyContextError(RiskServiceValidationError):
+    """Raised when company_id is missing or invalid."""
+
+
+class InvalidFormulaTypeError(RiskServiceValidationError):
+    """Raised when formula_type is not supported."""
+
+
+def validate_company_id(company_id: int) -> int:
+    if (
+        not isinstance(company_id, int)
+        or isinstance(company_id, bool)
+        or company_id <= 0
+    ):
+        raise InvalidCompanyContextError("company_id must be a positive integer.")
+    return company_id
 
 
 def normalize_formula_type(formula_type: str) -> str:
     formula = str(formula_type or "max").strip().lower()
-    return FORMULA_ALIASES.get(formula, formula)
+    formula = FORMULA_ALIASES.get(formula, formula)
+    if formula not in VALID_FORMULA_TYPES:
+        raise InvalidFormulaTypeError("Unsupported formula_type.")
+    return formula
 
 
 def load_fallback_settings() -> dict:
@@ -47,6 +73,7 @@ class RiskService:
         """
         根據公司 ID 讀取權重與公式設定。
         """
+        company_id = validate_company_id(company_id)
         default_settings = {
             "company_id": company_id,
             "formula_type": "max",
@@ -85,8 +112,8 @@ class RiskService:
                     logger.warning(f"無法在資料庫建立預設權重設定: {ins_err}")
                 return default_settings
 
-        except Exception as e:
-            logger.error(f"Supabase 查詢 weight_settings 失敗，啟用降級機制: {e}")
+        except Exception:
+            logger.exception("Supabase 查詢 weight_settings 失敗，啟用降級機制。")
             
             try:
                 fallback_data = load_fallback_settings()
@@ -97,8 +124,8 @@ class RiskService:
                         settings.get("formula_type", "max")
                     )
                     return settings
-            except Exception as json_err:
-                logger.error(f"讀取本地權重備份檔失敗: {json_err}")
+            except Exception:
+                logger.exception("讀取本地權重備份檔失敗。")
             
             return default_settings
 
@@ -107,6 +134,7 @@ class RiskService:
         """
         儲存或更新給定公司 ID 的權重公式設定（使用 Supabase Upsert 確保寫入成功）。
         """
+        company_id = validate_company_id(company_id)
         weight_c = float(weight_c)
         weight_i = float(weight_i)
         weight_a = float(weight_a)
