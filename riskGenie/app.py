@@ -58,6 +58,7 @@ REQUIRED_ENV_VARS = ("FLASK_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY")
 LOGIN_ERROR_MESSAGE = "電子郵件或密碼錯誤"
 ACCOUNT_DISABLED_MESSAGE = "帳號已停用，請聯絡系統管理員"
 ADMIN_ROLE_NAME = "系統管理員"
+COMPANY_CONTEXT_ERROR = "帳號缺少公司識別資訊"
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 CREATE_USER_FIELDS = {"username", "email", "password", "role_id"}
 UPDATE_USER_FIELDS = {"username", "role_id"}
@@ -195,6 +196,17 @@ def _session_company_id():
 
 def _session_role_name():
     return session.get("role") or session.get("role_name")
+
+
+def _wants_json_response():
+    accept = request.headers.get("Accept", "")
+    return request.is_json or "application/json" in accept
+
+
+def _company_context_error_response(json_response=False):
+    if json_response:
+        return jsonify({"success": False, "error": COMPANY_CONTEXT_ERROR}), 403
+    return COMPANY_CONTEXT_ERROR, 403
 
 
 def _validate_create_user_payload(payload):
@@ -632,8 +644,6 @@ def create_app(test_config=None):
 
             "asset_id": asset_id,
 
-            "asset_code": asset_code,
-
             "ip_address": request.remote_addr,
 
             "status": status,
@@ -642,12 +652,23 @@ def create_app(test_config=None):
 
         }
 
+        if asset_code:
+            app.logger.info(
+                "Audit asset_code context for %s: %s",
+                action,
+                asset_code,
+            )
 
-        supabase.table(
-            "audit_logs"
-        ).insert(
-            log
-        ).execute()
+        try:
+            supabase.table(
+                "audit_logs"
+            ).insert(
+                log
+            ).execute()
+            return True
+        except Exception:
+            app.logger.exception("Unable to write audit log for %s.", action)
+            return False
 
     # ===============================
     # 首頁
@@ -656,11 +677,15 @@ def create_app(test_config=None):
     @app.route("/")
     @login_required
     def home():
+        company_id = _session_company_id()
+        if company_id is None:
+            return _company_context_error_response(_wants_json_response())
 
         result = (
             supabase
             .table("assets")
             .select("*")
+            .eq("company_id", company_id)
             .order("id", desc=True)
             .limit(10)
             .execute()
@@ -719,6 +744,9 @@ def create_app(test_config=None):
     )
     @login_required
     def upload_excel():
+        company_id = _session_company_id()
+        if company_id is None:
+            return _company_context_error_response(_wants_json_response())
 
 
         file = request.files["file"]
@@ -817,7 +845,11 @@ def create_app(test_config=None):
 
 
                     "created_at":
-                        datetime.now().isoformat()
+                        datetime.now().isoformat(),
+
+
+                    "company_id":
+                        company_id
 
                 }
 
@@ -871,6 +903,9 @@ def create_app(test_config=None):
     @app.route("/asset_add", methods=["GET", "POST"])
     @login_required
     def asset_add():
+        company_id = _session_company_id()
+        if company_id is None:
+            return _company_context_error_response(_wants_json_response())
 
 
         if request.method == "POST":
@@ -959,7 +994,11 @@ def create_app(test_config=None):
 
 
                 "created_at":
-                    datetime.now().isoformat()
+                    datetime.now().isoformat(),
+
+
+                "company_id":
+                    company_id
 
             }
 
@@ -1026,6 +1065,9 @@ def create_app(test_config=None):
     @app.route("/summary")
     @login_required
     def asset_summary():
+        company_id = _session_company_id()
+        if company_id is None:
+            return _company_context_error_response(_wants_json_response())
 
 
         asset_id_code = request.args.get(
@@ -1064,6 +1106,7 @@ def create_app(test_config=None):
             supabase
             .table("assets")
             .select("*")
+            .eq("company_id", company_id)
             .execute()
             .data
         )
@@ -1155,16 +1198,23 @@ def create_app(test_config=None):
     @app.route("/asset_edit/<int:id>", methods=["GET", "POST"])
     @login_required
     def asset_edit(id):
+        company_id = _session_company_id()
+        if company_id is None:
+            return _company_context_error_response(_wants_json_response())
 
 
-        asset = (
+        asset_response = (
             supabase
             .table("assets")
             .select("*")
             .eq("id", id)
-            .single()
+            .eq("company_id", company_id)
+            .limit(1)
             .execute()
-        ).data
+        )
+        asset = _single_record(asset_response)
+        if not asset:
+            return "找不到資產", 404
 
 
 
@@ -1272,6 +1322,9 @@ def create_app(test_config=None):
             ).eq(
                 "id",
                 id
+            ).eq(
+                "company_id",
+                company_id
             ).execute()
 
 
@@ -1300,16 +1353,23 @@ def create_app(test_config=None):
     @app.route("/asset_delete/<int:id>", methods=["GET", "POST"])
     @login_required
     def asset_delete(id):
+        company_id = _session_company_id()
+        if company_id is None:
+            return _company_context_error_response(_wants_json_response())
 
 
-        asset = (
+        asset_response = (
             supabase
             .table("assets")
             .select("*")
             .eq("id", id)
-            .single()
+            .eq("company_id", company_id)
+            .limit(1)
             .execute()
-        ).data
+        )
+        asset = _single_record(asset_response)
+        if not asset:
+            return "找不到資產", 404
 
 
 
@@ -1318,34 +1378,35 @@ def create_app(test_config=None):
 
             try:
 
-
-                create_log(
-                    action="刪除資產",
-                    asset_id=id,
-                    asset_code=asset["asset_id_code"]
-                )
-
-
                 supabase.table(
                     "assets"
                 ).delete().eq(
                     "id",
                     id
+                ).eq(
+                    "company_id",
+                    company_id
                 ).execute()
 
 
+                create_log(
+                    action="刪除資產",
+                    asset_id=None,
+                    asset_code=asset.get("asset_id_code")
+                )
 
             except Exception:
 
 
                 create_log(
                     action="刪除資產",
-                    asset_id=id,
+                    asset_id=None,
+                    asset_code=asset.get("asset_id_code"),
                     status="失敗"
                 )
 
 
-                raise
+                return "刪除資產失敗", 500
 
 
 

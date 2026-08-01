@@ -33,6 +33,14 @@ def normalize_formula_type(formula_type: str) -> str:
     return FORMULA_ALIASES.get(formula, formula)
 
 
+def load_fallback_settings() -> dict:
+    if not os.path.exists(FALLBACK_FILE):
+        return {}
+
+    with open(FALLBACK_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 class RiskService:
     @staticmethod
     def get_weight_settings(company_id: int) -> dict:
@@ -80,19 +88,17 @@ class RiskService:
         except Exception as e:
             logger.error(f"Supabase 查詢 weight_settings 失敗，啟用降級機制: {e}")
             
-            if os.path.exists(FALLBACK_FILE):
-                try:
-                    with open(FALLBACK_FILE, "r", encoding="utf-8") as f:
-                        fallback_data = json.load(f)
-                        company_key = str(company_id)
-                        if company_key in fallback_data:
-                            settings = fallback_data[company_key]
-                            settings["formula_type"] = normalize_formula_type(
-                                settings.get("formula_type", "max")
-                            )
-                            return settings
-                except Exception as json_err:
-                    logger.error(f"讀取本地權重備份檔失敗: {json_err}")
+            try:
+                fallback_data = load_fallback_settings()
+                company_key = str(company_id)
+                if company_key in fallback_data:
+                    settings = fallback_data[company_key]
+                    settings["formula_type"] = normalize_formula_type(
+                        settings.get("formula_type", "max")
+                    )
+                    return settings
+            except Exception as json_err:
+                logger.error(f"讀取本地權重備份檔失敗: {json_err}")
             
             return default_settings
 
@@ -160,13 +166,10 @@ class RiskService:
         # 2. 同步寫入本地 JSON 備份檔
         try:
             os.makedirs(os.path.dirname(FALLBACK_FILE), exist_ok=True)
-            fallback_data = {}
-            if os.path.exists(FALLBACK_FILE):
-                try:
-                    with open(FALLBACK_FILE, "r", encoding="utf-8") as f:
-                        fallback_data = json.load(f)
-                except Exception:
-                    fallback_data = {}
+            try:
+                fallback_data = load_fallback_settings()
+            except Exception:
+                fallback_data = {}
             
             fallback_data[str(company_id)] = settings_dict
             with open(FALLBACK_FILE, "w", encoding="utf-8") as f:

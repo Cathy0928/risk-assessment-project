@@ -8,12 +8,18 @@ Description: 數據持久與存取層。
 from typing import List, Dict, Any, Optional
 from riskGenie.services.supabase_client import get_supabase_client
 
-def get_all_assets() -> List[Dict[str, Any]]:
+def get_all_assets(company_id: int) -> List[Dict[str, Any]]:
     """
-    自 assets 資料表檢索所有資訊資產紀錄。
+    自 assets 資料表檢索指定公司的資訊資產紀錄。
     """
     supabase = get_supabase_client()
-    response = supabase.table("assets").select("*").execute()
+    response = (
+        supabase
+        .table("assets")
+        .select("*")
+        .eq("company_id", company_id)
+        .execute()
+    )
     return response.data if response.data else []
 
 def get_all_vulnerabilities() -> List[Dict[str, Any]]:
@@ -24,12 +30,19 @@ def get_all_vulnerabilities() -> List[Dict[str, Any]]:
     response = supabase.table("vulnerabilities").select("*").execute()
     return response.data if response.data else []
 
-def get_asset_by_id(asset_id: int) -> Optional[List[Dict[str, Any]]]:
+def get_asset_by_id(asset_id: int, company_id: int) -> Optional[List[Dict[str, Any]]]:
     """
-    依據主鍵 ID 自 assets 資料表查詢特定資訊資產。
+    依據主鍵 ID 與公司 ID 自 assets 資料表查詢特定資訊資產。
     """
     supabase = get_supabase_client()
-    response = supabase.table("assets").select("*").eq("id", asset_id).execute()
+    response = (
+        supabase
+        .table("assets")
+        .select("*")
+        .eq("id", asset_id)
+        .eq("company_id", company_id)
+        .execute()
+    )
     return response.data if response.data else None
 
 def get_vulnerability_by_id(vulnerability_id: int) -> Optional[List[Dict[str, Any]]]:

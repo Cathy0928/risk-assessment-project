@@ -2,6 +2,8 @@
 .env.*
 !.env.example
 **pycache**/
+__pycache__/
+**/__pycache__/
 *.pyc
 *.py[cod]
 .venv/
@@ -9,6 +11,7 @@ venv/
 .pytest_cache/
 .pytest_temp/
 .pytest_runs/
+riskGenie/data/weight_settings_fallback.json
 .DS_Store
 .vscode/
 .idea/
