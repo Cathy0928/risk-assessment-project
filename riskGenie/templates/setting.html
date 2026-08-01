@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiskGenie 資安管理系統 - 設定</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
+
+    <style>
+        /* 為確保 CSS 能 100% 讀取，直接內嵌專屬樣式 */
+        .page-title {
+            text-align: center;
+            font-size: 32px;
+            font-weight: 500;
+            margin-bottom: 30px;
+            color: #000000;
+        }
+
+        .settings-form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        /* 外層黑框容器 */
+        .settings-card {
+            border: 1px solid #000000;
+            width: 100%;
+            max-width: 650px;
+            padding: 40px 50px;
+            box-sizing: border-box;
+            background-color: #ffffff;
+        }
+
+        .form-group-list {
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .form-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-label {
+            font-size: 22px;
+            color: #333333;
+            letter-spacing: 12px; /* 模擬「帳 號」、「密 碼」拉開字距效果 */
+            white-space: nowrap;
+        }
+
+        /* 圓角輸入框 */
+        .rounded-input {
+            width: 320px;
+            height: 45px;
+            border: 1px solid #000000;
+            border-radius: 25px;
+            padding: 0 20px;
+            font-size: 18px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        /* 底部儲存按鈕 */
+        .save-action {
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .save-btn {
+            width: 130px;
+            padding: 8px 0;
+            font-size: 20px;
+            background-color: #ffffff;
+            border: 1px solid #000000;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .save-btn:hover {
+            background-color: #f0f0f0;
+        }
+
+        /* 側邊欄底部設定按鈕的高亮樣式 */
+        .menu-footer .setting-btn.active {
+            font-weight: bold;
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        RiskGenie
+    </div>
+
+    <a href="{{ url_for('home') }}">
+        <button class="menu-btn">首 頁</button>
+    </a>
+
+    <a href="{{ url_for('asset_summary') }}">
+        <button class="menu-btn">資產總表</button>
+    </a>
+
+    <button class="menu-btn">風險評鑑</button>
+
+    <a href="{{ url_for('weight_setting') }}">
+        <button class="menu-btn">權重設定</button>
+    </a>
+
+    <button class="menu-btn">AI建議</button>
+    <button class="menu-btn">建議報表</button>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+
+        <div class="session-user">
+            <strong>{{ session.get("username","使用者") }}</strong><br>
+            {{ session.get("role_name","") }}
+        </div>
+
+        <!-- 💡 設定按鈕高亮狀態 -->
+        <a href="{{ url_for('settings') }}" style="text-decoration: none; color: inherit;">
+            <div class="setting-btn active" style="margin-bottom: 15px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 18px;">
+                ⚙️ 設定
+            </div>
+        </a>
+
+        <form action="{{ url_for('logout') }}" method="post">
+            <button class="menu-btn logout-btn" type="submit">
+                登出
+            </button>
+        </form>
+
+    </div>
+
+</div>
+
+<div class="main-content">
+
+    <div class="content-wrapper">
+
+        <h1 class="page-title">設定</h1>
+
+        <form action="#" method="post" class="settings-form">
+
+            <!-- 中間矩形邊框卡片區塊 -->
+            <div class="settings-card">
+                <div class="form-group-list">
+                    
+                    <div class="form-row">
+                        <label class="form-label">帳號</label>
+                        <input type="text" name="username" class="rounded-input" value="{{ session.get('username', '') }}">
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label">密碼</label>
+                        <input type="password" name="password" class="rounded-input">
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" style="letter-spacing: 0px;">電子郵件</label>
+                        <input type="email" name="email" class="rounded-input">
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" style="letter-spacing: 0px;">公司名稱</label>
+                        <input type="text" name="company" class="rounded-input">
+                    </div>
+
+                    <div class="form-row">
+                        <label class="form-label" style="letter-spacing: 0px;">所屬部門</label>
+                        <input type="text" name="department" class="rounded-input">
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- 最下方儲存按鈕 (在黑框外部) -->
+            <div class="save-action">
+                <button type="submit" class="save-btn">儲存</button>
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+</body>
+</html>
