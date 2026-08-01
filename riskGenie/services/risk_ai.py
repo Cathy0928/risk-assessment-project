@@ -1,51 +1,45 @@
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+
+logger = logging.getLogger(__name__)
 
 
 # ===============================
 # 載入 .env
 # ===============================
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-env_path = BASE_DIR / ".env"
-
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+env_path = PROJECT_ROOT / ".env"
 load_dotenv(env_path)
 
 
-api_key = os.getenv("GEMINI_API_KEY")
+class GeminiConfigurationError(RuntimeError):
+    """Raised when Gemini cannot be called because local configuration is incomplete."""
 
 
-if not api_key:
-
-    raise RuntimeError(
-        "找不到 GEMINI_API_KEY，請確認 riskGenie/.env"
-    )
+class GeminiServiceError(RuntimeError):
+    """Raised when Gemini is configured but the service call fails."""
 
 
-
-# ===============================
-# Gemini Client
-# ===============================
-
-client = genai.Client(
-    api_key=api_key
-)
+def is_gemini_configured():
+    return bool(os.getenv("GEMINI_API_KEY"))
 
 
+def _load_genai():
+    try:
+        import google.generativeai as genai
+    except ImportError as exc:
+        raise GeminiConfigurationError(
+            "google-generativeai is not installed."
+        ) from exc
+    return genai
 
-# ===============================
-# AI 風險建議
-# ===============================
 
-def generate_risk_advice(data):
-
-
-    prompt = f"""
+def _build_prompt(data):
+    return f"""
 你是一位資安風險評鑑顧問。
 
 請根據以下資訊進行風險分析，
@@ -88,49 +82,38 @@ def generate_risk_advice(data):
 """
 
 
+# ===============================
+# AI 風險建議
+# ===============================
+
+def generate_risk_advice(data):
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        raise GeminiConfigurationError("GEMINI_API_KEY is not configured.")
+
+    prompt = _build_prompt(data)
 
     try:
-
-
-        response = client.models.generate_content(
-
-            model="gemini-2.0-flash-lite",
-
-            contents=prompt,
-
-            config=types.GenerateContentConfig(
-
-                temperature=0.3,
-
-                max_output_tokens=1000
-
-            )
-
+        genai = _load_genai()
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(
+            "gemini-2.0-flash-lite",
+            generation_config={
+                "temperature": 0.3,
+                "max_output_tokens": 1000,
+            },
         )
-
-
+        response = model.generate_content(prompt)
         return {
-
             "success": True,
-
-            "advice": response.text
-
+            "advice": getattr(response, "text", ""),
         }
-
-
-
+    except GeminiConfigurationError:
+        raise
     except Exception as e:
-
-
-        return {
-
-            "success": False,
-
-            "error": str(e)
-
-        }
-
-
+        logger.exception("Gemini advice generation failed.")
+        raise GeminiServiceError("Gemini service request failed.") from e
 
 
 # ===============================
@@ -138,22 +121,12 @@ def generate_risk_advice(data):
 # ===============================
 
 if __name__ == "__main__":
-
-
     test_data = {
-
         "asset_name": "Web Server",
-
         "cia": "C:5 I:4 A:5",
-
         "cvss": 9.8,
-
-        "risk_score": 49
-
+        "risk_score": 49,
     }
 
-
     result = generate_risk_advice(test_data)
-
-
     print(result)

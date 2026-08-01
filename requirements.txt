@@ -2,3 +2,6 @@ Flask
 python-dotenv
 supabase
 pytest
+pandas
+openpyxl
+google-generativeai

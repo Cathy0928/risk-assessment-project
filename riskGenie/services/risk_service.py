@@ -23,6 +23,14 @@ logger = logging.getLogger(__name__)
 # 本地降級備份檔路徑
 FALLBACK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 FALLBACK_FILE = os.path.join(FALLBACK_DIR, "weight_settings_fallback.json")
+FORMULA_ALIASES = {
+    "weighted_avg": "weighted_average",
+}
+
+
+def normalize_formula_type(formula_type: str) -> str:
+    formula = str(formula_type or "max").strip().lower()
+    return FORMULA_ALIASES.get(formula, formula)
 
 
 class RiskService:
@@ -47,7 +55,7 @@ class RiskService:
                 data = response.data[0]
                 return {
                     "company_id": int(data.get("company_id", company_id)),
-                    "formula_type": str(data.get("formula_type", "max")),
+                    "formula_type": normalize_formula_type(data.get("formula_type", "max")),
                     "weight_c": float(data.get("weight_c", 0.3333)),
                     "weight_i": float(data.get("weight_i", 0.3333)),
                     "weight_a": float(data.get("weight_a", 0.3333))
@@ -78,7 +86,11 @@ class RiskService:
                         fallback_data = json.load(f)
                         company_key = str(company_id)
                         if company_key in fallback_data:
-                            return fallback_data[company_key]
+                            settings = fallback_data[company_key]
+                            settings["formula_type"] = normalize_formula_type(
+                                settings.get("formula_type", "max")
+                            )
+                            return settings
                 except Exception as json_err:
                     logger.error(f"讀取本地權重備份檔失敗: {json_err}")
             
@@ -92,6 +104,7 @@ class RiskService:
         weight_c = float(weight_c)
         weight_i = float(weight_i)
         weight_a = float(weight_a)
+        formula_type = normalize_formula_type(formula_type)
 
         settings_dict = {
             "company_id": company_id,
@@ -102,6 +115,7 @@ class RiskService:
         }
 
         supabase_success = False
+        local_backup_success = False
         
         # 1. 寫入雲端 Supabase 資料庫
         try:
@@ -121,7 +135,7 @@ class RiskService:
                     "weight_a": weight_a,
                     "updated_at": now_str
                 }).eq("id", record_id).execute()
-                print("Supabase Update 結果:", update_res)
+                logger.debug("Supabase weight_settings update completed.")
             else:
                 # INSERT 新紀錄
                 insert_res = supabase.table("weight_settings").insert({
@@ -133,13 +147,15 @@ class RiskService:
                     "created_at": now_str,
                     "updated_at": now_str
                 }).execute()
-                print("Supabase Insert 結果:", insert_res)
+                logger.debug("Supabase weight_settings insert completed.")
                 
             supabase_success = True
             logger.info(f"公司 {company_id} 權重設定已成功儲存至 Supabase。")
         except Exception as e:
-            print(f"❌ 寫入 Supabase 失敗詳情: {e}")
-            logger.error(f"無法儲存權重設定到 Supabase: {e}")
+            logger.error(
+                "無法儲存權重設定到 Supabase: %s",
+                type(e).__name__,
+            )
 
         # 2. 同步寫入本地 JSON 備份檔
         try:
@@ -155,11 +171,32 @@ class RiskService:
             fallback_data[str(company_id)] = settings_dict
             with open(FALLBACK_FILE, "w", encoding="utf-8") as f:
                 json.dump(fallback_data, f, ensure_ascii=False, indent=4)
+            local_backup_success = True
         except Exception as json_err:
-            logger.error(f"無法將權重設定寫入本地備份檔: {json_err}")
+            logger.error(
+                "無法將權重設定寫入本地備份檔: %s",
+                type(json_err).__name__,
+            )
+
+        success = supabase_success or local_backup_success
+        if supabase_success and local_backup_success:
+            status = "synced"
+            message = "權重與公式設定儲存成功。"
+        elif supabase_success:
+            status = "cloud_only"
+            message = "已儲存至雲端，但本機備份寫入失敗。"
+        elif local_backup_success:
+            status = "local_backup_only"
+            message = "已儲存至本機備份，但雲端同步失敗。"
+        else:
+            status = "failed"
+            message = "權重設定儲存失敗。"
 
         return {
-            "success": True,
+            "success": success,
             "supabase_synced": supabase_success,
+            "local_backup_saved": local_backup_success,
+            "status": status,
+            "message": message,
             "settings": settings_dict
         }

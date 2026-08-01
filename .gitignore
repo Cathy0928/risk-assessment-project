@@ -3,9 +3,12 @@
 !.env.example
 **pycache**/
 *.pyc
+*.py[cod]
 .venv/
 venv/
 .pytest_cache/
+.pytest_temp/
+.pytest_runs/
 .DS_Store
 .vscode/
 .idea/

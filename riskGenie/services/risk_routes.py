@@ -3,14 +3,31 @@
 風險評鑑與權重設定的 Flask Blueprint 路由。
 """
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+import logging
 
 # 💡 修復相對與絕對匯入防呆
 try:
     from .risk_service import RiskService
+    from .risk_ai import (
+        GeminiConfigurationError,
+        GeminiServiceError,
+        generate_risk_advice,
+        is_gemini_configured,
+    )
+    from .report import export_report
 except ImportError:
     from services.risk_service import RiskService
+    from services.risk_ai import (
+        GeminiConfigurationError,
+        GeminiServiceError,
+        generate_risk_advice,
+        is_gemini_configured,
+    )
+    from services.report import export_report
 
 risk_bp = Blueprint('risk', __name__)
+logger = logging.getLogger(__name__)
+AI_REQUIRED_FIELDS = ("asset_name", "cia", "cvss", "risk_score")
 
 
 @risk_bp.route('/weight_setting', methods=['GET', 'POST'])
@@ -88,6 +105,7 @@ def save_weight_settings_api():
 
         if not formula_type:
             return jsonify({"error": "缺少必要欄位: formula_type"}), 400
+        formula_type = str(formula_type).strip().lower()
 
         try:
             weight_c = float(weight_c) if weight_c is not None else 0.3333
@@ -96,7 +114,7 @@ def save_weight_settings_api():
         except ValueError:
             return jsonify({"error": "權重值必須為數值型態"}), 400
 
-        if formula_type == "weighted_average":
+        if formula_type in ("weighted_average", "weighted_avg"):
             total_weight = weight_c + weight_i + weight_a
             
             if total_weight > 1.1:
@@ -115,7 +133,8 @@ def save_weight_settings_api():
             weight_i=weight_i,
             weight_a=weight_a
         )
-        return jsonify(result), 200
+        status_code = 200 if result.get("success") else 503
+        return jsonify(result), status_code
 
     except Exception as e:
         return jsonify({"error": f"儲存權重設定失敗: {str(e)}"}), 500
@@ -137,15 +156,72 @@ def get_historical_assessments_api():
 #風險評鑑AI建議
 @risk_bp.route("/ai-advice", methods=["POST"])
 def ai_advice():
+    if not session.get("logged_in"):
+        return jsonify({
+            "success": False,
+            "error": "Unauthorized",
+            "code": "UNAUTHORIZED",
+        }), 401
 
-    data = request.get_json()
+    if not request.is_json:
+        return jsonify({
+            "success": False,
+            "error": "請使用 JSON 格式送出 AI 建議請求。",
+            "code": "INVALID_JSON",
+        }), 400
 
-    result = generate_risk_advice(data)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({
+            "success": False,
+            "error": "JSON 內容無效。",
+            "code": "INVALID_JSON",
+        }), 400
 
-    return jsonify(result)
+    missing_fields = [
+        field for field in AI_REQUIRED_FIELDS
+        if data.get(field) is None or data.get(field) == ""
+    ]
+    if missing_fields:
+        return jsonify({
+            "success": False,
+            "error": "缺少必要欄位。",
+            "code": "MISSING_FIELDS",
+            "missing_fields": missing_fields,
+        }), 400
+
+    if not is_gemini_configured():
+        return jsonify({
+            "success": False,
+            "error": "Gemini API Key 尚未設定，請在環境變數設定 GEMINI_API_KEY。",
+            "code": "GEMINI_NOT_CONFIGURED",
+        }), 503
+
+    try:
+        result = generate_risk_advice(data)
+        return jsonify(result), 200
+    except GeminiConfigurationError:
+        logger.exception("Gemini configuration error.")
+        return jsonify({
+            "success": False,
+            "error": "Gemini 服務尚未正確設定。",
+            "code": "GEMINI_NOT_CONFIGURED",
+        }), 503
+    except GeminiServiceError:
+        return jsonify({
+            "success": False,
+            "error": "Gemini 服務暫時無法產生建議，請稍後再試。",
+            "code": "GEMINI_SERVICE_FAILED",
+        }), 503
 
 #報表
 @risk_bp.route("/export", methods=["GET"])
 def export():
+    if not session.get("logged_in"):
+        return jsonify({
+            "success": False,
+            "error": "Unauthorized",
+            "code": "UNAUTHORIZED",
+        }), 401
 
     return export_report()
