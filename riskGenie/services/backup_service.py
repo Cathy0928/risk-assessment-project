@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import zipfile
 from datetime import datetime, timezone
 
@@ -12,6 +13,7 @@ except ImportError:  # Allows imports when running from inside riskGenie/.
 
 
 BACKUP_VERSION = "1.0"
+logger = logging.getLogger(__name__)
 BACKUP_TABLES = (
     "companies",
     "departments",
@@ -44,8 +46,9 @@ TABLE_SCOPE_POLICIES = {
         "column": "company_id",
     },
     "risk_assessments": {
-        "strategy": "related",
-        "column": "asset_id",
+        "strategy": "company_related",
+        "column": "company_id",
+        "relation_column": "asset_id",
         "source_table": "assets",
         "source_column": "id",
     },
@@ -149,11 +152,13 @@ def _query_table(client, table_name, company_id, exported_tables):
     policy = TABLE_SCOPE_POLICIES[table_name]
     strategy = policy["strategy"]
     related_values = None
-    if strategy == "related":
+    if strategy in {"related", "company_related"}:
         related_values = _related_values(exported_tables, policy)
 
     query = client.table(table_name).select("*")
     if strategy == "company":
+        query = query.eq(policy["column"], company_id)
+    elif strategy == "company_related":
         query = query.eq(policy["column"], company_id)
     elif strategy == "related":
         query = query.in_(policy["column"], related_values)
@@ -166,6 +171,24 @@ def _query_table(client, table_name, company_id, exported_tables):
         records = []
     if not isinstance(records, list):
         raise TypeError("Table response data must be a list.")
+
+    if strategy == "company_related":
+        allowed_relation_ids = set(related_values)
+        consistent_records = [
+            record
+            for record in records
+            if isinstance(record, dict)
+            and record.get(policy["column"]) == company_id
+            and record.get(policy["relation_column"]) in allowed_relation_ids
+        ]
+        excluded_count = len(records) - len(consistent_records)
+        if excluded_count:
+            logger.warning(
+                "Excluded %d risk assessment record(s) with inconsistent "
+                "company or asset scope.",
+                excluded_count,
+            )
+        records = consistent_records
     return sanitize_json(records)
 
 
@@ -217,10 +240,16 @@ def create_backup_archive(generated_by, company_id, now=None):
                 }
             )
         except Exception as exc:
+            error_type = _safe_error_type(exc)
+            logger.warning(
+                "Backup query failed for table %s (%s).",
+                table_name,
+                error_type,
+            )
             failed_tables.append(
                 {
                     "table": table_name,
-                    "error_type": _safe_error_type(exc),
+                    "error_type": error_type,
                 }
             )
 

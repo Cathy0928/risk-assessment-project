@@ -149,8 +149,18 @@ def successful_table_results(app_module):
             {"id": 9901, "company_id": 99},
         ],
         "risk_assessments": [
-            {"id": 7101, "asset_id": 7001, "vulnerability_id": 7201},
-            {"id": 9911, "asset_id": 9901, "vulnerability_id": 9921},
+            {
+                "id": 7101,
+                "asset_id": 7001,
+                "company_id": 7,
+                "vulnerability_id": 7201,
+            },
+            {
+                "id": 9911,
+                "asset_id": 9901,
+                "company_id": 99,
+                "vulnerability_id": 9921,
+            },
         ],
         "audit_logs": [
             {"id": 7301, "user_id": "user-7"},
@@ -411,7 +421,7 @@ def test_direct_tenant_tables_use_company_filters(
         ]
 
 
-def test_related_tables_are_scoped_through_tenant_records(
+def test_risk_assessments_use_company_filter_and_related_tables_stay_scoped(
     client, app_module, monkeypatch
 ):
     fake_supabase = install_fake_supabase(
@@ -425,7 +435,7 @@ def test_related_tables_are_scoped_through_tenant_records(
 
     assert response.status_code == 200
     assert query_for(fake_supabase, "risk_assessments")["filters"] == [
-        ("in", "asset_id", [7001])
+        ("eq", "company_id", 7)
     ]
     assert query_for(fake_supabase, "audit_logs")["filters"] == [
         ("in", "user_id", ["user-7"])
@@ -461,6 +471,63 @@ def test_backup_excludes_other_tenant_data_and_keeps_global_roles(
         ] == [7201]
         assert len(read_json(backup, "roles.json")) == 2
     assert query_for(fake_supabase, "roles")["filters"] == []
+
+
+def test_backup_excludes_assessment_with_mismatched_asset_company(
+    client, app_module, monkeypatch, caplog
+):
+    table_results = successful_table_results(app_module)
+    table_results["risk_assessments"] = [
+        {
+            "id": 7101,
+            "asset_id": 7001,
+            "company_id": 7,
+            "vulnerability_id": 7201,
+        },
+        {
+            "id": 7102,
+            "asset_id": 9901,
+            "company_id": 7,
+            "vulnerability_id": 9921,
+        },
+    ]
+    install_fake_supabase(app_module, monkeypatch, table_results)
+    login_as(client, "系統管理員", company_id=7)
+
+    response = client.post("/api/admin/backups/export")
+
+    assert response.status_code == 200
+    with open_backup(response) as backup:
+        assessments = read_json(backup, "risk_assessments.json")
+    assert [record["id"] for record in assessments] == [7101]
+    assert "Excluded 1 risk assessment" in caplog.text
+    assert "7102" not in caplog.text
+    assert "9901" not in caplog.text
+
+
+def test_backup_with_no_tenant_assets_does_not_query_assessments(
+    client, app_module, monkeypatch
+):
+    table_results = successful_table_results(app_module)
+    table_results["assets"] = []
+    fake_supabase = install_fake_supabase(
+        app_module,
+        monkeypatch,
+        table_results,
+    )
+    login_as(client, "系統管理員", company_id=7)
+
+    response = client.post("/api/admin/backups/export")
+
+    assert response.status_code == 200
+    assert "risk_assessments" not in fake_supabase.queried_tables
+    with open_backup(response) as backup:
+        assert "risk_assessments.json" not in backup.namelist()
+        manifest = read_json(backup, "backup_manifest.json")
+    assert {
+        "table": "risk_assessments",
+        "reason": "no_tenant_relation_ids",
+    } in manifest["skipped_tables"]
 
 
 def test_tables_without_safe_scope_are_skipped_without_query(
