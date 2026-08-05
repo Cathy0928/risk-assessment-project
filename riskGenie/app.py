@@ -48,11 +48,16 @@ try:
         SupabaseConfigError,
         get_supabase_client,
     )
+    from riskGenie.services.asset_service import get_assets
+
 except ImportError:
     from services.risk_routes import risk_bp
     from services import admin_service, backup_service
-    from services.supabase_client import SupabaseConfigError, get_supabase_client
-
+    from services.supabase_client import (
+        SupabaseConfigError,
+        get_supabase_client
+    )
+    from services.asset_service import get_assets
 
 REQUIRED_ENV_VARS = ("FLASK_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY")
 LOGIN_ERROR_MESSAGE = "電子郵件或密碼錯誤"
@@ -686,6 +691,7 @@ def create_app(test_config=None):
             .table("assets")
             .select("*")
             .eq("company_id", company_id)
+            .eq("status", "active")
             .order("id", desc=True)
             .limit(10)
             .execute()
@@ -749,150 +755,156 @@ def create_app(test_config=None):
             return _company_context_error_response(_wants_json_response())
 
 
-        file = request.files["file"]
+        file = request.files.get("file")
+
+        if not file:
+            return "沒有選擇檔案",400
 
 
         if file and file.filename.endswith(".xlsx"):
 
 
-            df = pd.read_excel(file)
+                df = pd.read_excel(file)
+
+
+                # 必要欄位檢查
+                required_columns = [
+                    "資產代碼",
+                    "資產類型",
+                    "資料類型",
+                    "資產名稱"
+                ]
+
+
+                for col in required_columns:
+                    if col not in df.columns:
+                        return f"缺少欄位:{col}", 400
 
 
 
-            for _, row in df.iterrows():
+                # 開始逐筆匯入
+                for _, row in df.iterrows():
 
 
-                asset = {
+                    asset = {
+
+                        "asset_id_code":
+                            str(row["資產代碼"]),
 
 
-                    "asset_id_code":
-                        str(row["資產代碼"]),
+                        "asset_type":
+                            row["資產類型"],
 
 
-                    "asset_type":
-                        row["資產類型"],
+                        "data_type":
+                            row["資料類型"],
 
 
-                    "data_type":
-                        row["資料類型"],
+                        "asset_name":
+                            row["資產名稱"],
 
 
-                    "asset_name":
-                        row["資產名稱"],
+                        "description":
+                            row.get("資產描述", ""),
 
 
-                    "description":
-                        row["資產描述"],
+                        "department":
+                            row.get("權責單位", ""),
 
 
-
-                    "department":
-                        row["權責單位"],
-
+                        "risk_owner":
+                            row.get("保管單位(風險擁有者)", ""),
 
 
-                    "risk_owner":
-                        row["保管單位(風險擁有者)"],
+                        "use_department":
+                            row.get("使用單位", ""),
 
 
-
-                    "use_department":
-                        row["使用單位"],
-
+                        "location":
+                            row.get("放置地點", ""),
 
 
-                    "location":
-                        row["放置地點"],
+                        "confidentiality":
+                            str(row.get("機密性", 0)),
 
 
-
-                    "confidentiality":
-                        str(row["機密性"]),
-
+                        "integrity":
+                            str(row.get("完整性", 0)),
 
 
-                    "integrity":
-                        str(row["完整性"]),
+                        "availability":
+                            str(row.get("可用性", 0)),
 
 
-
-                    "availability":
-                        str(row["可用性"]),
-
+                        "legality":
+                            str(row.get("適法性", 0)),
 
 
-                    "legality":
-                        str(row["適法性"]),
+                        "asset_value":
+                            max(
+                                int(row.get("機密性", 0)),
+                                int(row.get("完整性", 0)),
+                                int(row.get("可用性", 0)),
+                                int(row.get("適法性", 0))
+                            ),
 
 
-
-                    "asset_value":
-                        max(
-                            int(row["機密性"]),
-                            int(row["完整性"]),
-                            int(row["可用性"]),
-                            int(row["適法性"])
-                        ),
+                        "upload_user":
+                            session.get(
+                                "username",
+                                "admin"
+                            ),
 
 
-
-                    "upload_user":
-                        session.get(
-                            "username",
-                            "admin"
-                        ),
+                        "created_at":
+                            datetime.now().isoformat(),
 
 
+                        "company_id":
+                            company_id,
+                        "status":
+                            "active"
 
-                    "created_at":
-                        datetime.now().isoformat(),
-
-
-                    "company_id":
-                        company_id
-
-                }
+                    }
 
 
 
-                # 檢查資產代碼重複
-
-                exist = (
-                    supabase
-                    .table("assets")
-                    .select("id")
-                    .eq(
-                        "asset_id_code",
-                        asset["asset_id_code"]
-                    )
-                    .execute()
-                )
-
-
-
-                if not exist.data:
-
-
-                    result = (
-                        supabase
-                        .table("assets")
-                        .insert(asset)
+                    # 檢查資產代碼是否重複
+                    exist = (
+                        supabase.table("assets")
+                        .select("id")
+                        .eq("company_id", company_id)
+                        .eq("asset_id_code", asset["asset_id_code"])
+                        .eq("status", "active")
+                        .eq("is_deleted", False)
                         .execute()
                     )
 
 
-                    if result.data:
 
-                        create_log(
-                            action="Excel匯入資產",
-                            asset_id=result.data[0]["id"]
+                    # 不存在才新增
+                    if not exist.data:
+
+
+                        result = (
+                            supabase
+                            .table("assets")
+                            .insert(asset)
+                            .execute()
                         )
 
 
+                        if result.data:
 
-        return redirect(
-            url_for("home")
-        )
+                            create_log(
+                                action="Excel匯入資產",
+                                asset_id=result.data[0]["id"]
+                            )
+
+
+                return redirect(
+                    url_for("home")
+                )
 
 
 
@@ -998,7 +1010,10 @@ def create_app(test_config=None):
 
 
                 "company_id":
-                    company_id
+                    company_id,
+                
+                "status":
+                    "active"
 
             }
 
@@ -1007,13 +1022,12 @@ def create_app(test_config=None):
             # 檢查重複資產代碼
 
             exist = (
-                supabase
-                .table("assets")
+                supabase.table("assets")
                 .select("id")
-                .eq(
-                    "asset_id_code",
-                    asset["asset_id_code"]
-                )
+                .eq("company_id", company_id)
+                .eq("asset_id_code", asset["asset_id_code"])
+                .eq("status", "active")
+                .eq("is_deleted", False)
                 .execute()
             )
 
@@ -1107,6 +1121,7 @@ def create_app(test_config=None):
             .table("assets")
             .select("*")
             .eq("company_id", company_id)
+            .eq("status", "active")
             .execute()
             .data
         )
@@ -1130,7 +1145,7 @@ def create_app(test_config=None):
             result = [
                 a for a in result
                 if asset_id_code.lower()
-                in a["asset_id_code"].lower()
+                in (a.get("asset_id_code") or "").lower()
             ]
 
 
@@ -1159,7 +1174,7 @@ def create_app(test_config=None):
             result = [
                 a for a in result
                 if department.lower()
-                in a["department"].lower()
+                in (a.get("department") or "").lower()
             ]
 
 
@@ -1169,7 +1184,7 @@ def create_app(test_config=None):
             result = [
                 a for a in result
                 if risk_owner.lower()
-                in a["risk_owner"].lower()
+                in (a.get("risk_owner") or "").lower()
             ]
 
 
@@ -1189,7 +1204,107 @@ def create_app(test_config=None):
             assets=result
         )
 
+    @app.route("/asset_missing")
+    @login_required
+    def asset_missing():
 
+        company_id = _session_company_id()
+
+        if company_id is None:
+            return _company_context_error_response(
+                _wants_json_response()
+            )
+
+
+        assets = (
+                    supabase
+                    .table("assets")
+                    .select("*")
+                    .eq(
+                        "company_id",
+                        company_id
+                    )
+                    .eq(
+                        "status",
+                        "active"
+                    )
+                    .execute()
+                    .data
+                )
+
+
+        missing_assets = []
+
+
+        for asset in assets:
+
+            errors = []
+
+
+            check_fields = {
+
+                "asset_id_code": "缺少資產代碼",
+
+                "asset_name": "缺少資產名稱",
+
+                "asset_type": "缺少資產類型",
+
+                "data_type": "缺少資料類型",
+
+                "department": "缺少權責單位",
+
+                "risk_owner": "缺少保管單位(風險擁有者)",
+
+                "use_department": "缺少使用單位",
+
+                "location": "缺少放置地點",
+
+                "description": "缺少資產描述",
+
+                "confidentiality": "缺少機密性(C)",
+
+                "integrity": "缺少完整性(I)",
+
+                "availability": "缺少可用性(A)",
+
+                "legality": "缺少適法性(L)"
+
+            }
+
+            for field, message in check_fields.items():
+
+                value = asset.get(field)
+
+
+                if value is None or str(value).strip()=="":
+                    errors.append(message)
+
+
+
+            if errors:
+
+                missing_assets.append({
+
+                    "asset": asset,
+
+                    "errors": errors
+
+                })
+
+
+
+        return render_template(
+
+            "asset_missing.html",
+
+            missing_assets=missing_assets,
+
+            total=len(assets)
+
+        )
+
+
+       
 
     # ===============================
     # 修改資產
@@ -1223,23 +1338,23 @@ def create_app(test_config=None):
             new_code = request.form["asset_id_code"]
 
             exist = (
-                supabase
-                .table("assets")
+                supabase.table("assets")
                 .select("id")
+                .eq("company_id", company_id)
                 .eq("asset_id_code", new_code)
+                .eq("status", "active")
+                .eq("is_deleted", False)
                 .execute()
             )
 
-            if exist.data:
-
-                # 如果找到的是別筆資料
-                if exist.data[0]["id"] != id:
-
-                    asset.update(request.form)
-
+            for item in exist.data:
+                if item["id"] != id:
                     return render_template(
                         "asset_edit.html",
-                        asset=asset,
+                        asset={
+                            **asset,
+                            **request.form.to_dict()
+                        },
                         error="❌ 資產代碼已存在"
                     )
             update_data = {
@@ -1378,25 +1493,51 @@ def create_app(test_config=None):
 
             try:
 
-                supabase.table(
-                    "assets"
-                ).delete().eq(
-                    "id",
-                    id
-                ).eq(
-                    "company_id",
-                    company_id
-                ).execute()
+                update_result = (
+                    supabase
+                    .table("assets")
+                    .update(
+                        {
+                            "status": "inactive","is_deleted": True
+                        }
+                    )
+                    .eq(
+                        "id",
+                        id
+                    )
+                    .eq(
+                        "company_id",
+                        company_id
+                    )
+                    .execute()
+                )
+
+
+                print("停用結果:", update_result.data)
+
+
+                if not update_result.data:
+
+                    create_log(
+                        action="刪除資產",
+                        asset_id=None,
+                        asset_code=asset.get("asset_id_code"),
+                        status="失敗"
+                    )
+
+                    return "停用資產失敗",500
+
 
 
                 create_log(
                     action="刪除資產",
-                    asset_id=None,
+                    asset_id=id,
                     asset_code=asset.get("asset_id_code")
                 )
 
-            except Exception:
 
+            except Exception as e:
+                print("刪除錯誤：", e)
 
                 create_log(
                     action="刪除資產",
@@ -1405,8 +1546,8 @@ def create_app(test_config=None):
                     status="失敗"
                 )
 
-
-                return "刪除資產失敗", 500
+                return f"刪除資產失敗：{e}", 500
+                        
 
 
 
