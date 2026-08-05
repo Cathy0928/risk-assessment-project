@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>RiskGenie 資安管理系統－資產總表</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/style.css') }}">
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='css/asset_summary.css') }}">
+</head>
+
+<body>
+
+<!-- ================= Sidebar ================= -->
+
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        👤 RiskGenie
+    </div>
+
+    <a href="{{ url_for('home') }}">
+        <button class="menu-btn">首頁</button>
+    </a>
+
+    <a href="{{ url_for('asset_summary') }}">
+        <button class="menu-btn active">資產總表</button>
+    </a>
+
+    <a href="/assess">
+        <button class="menu-btn">風險評鑑</button>
+    </a>
+
+    <button class="menu-btn">權重設定</button>
+
+    <button class="menu-btn">AI建議</button>
+
+    <button class="menu-btn">建議報表</button>
+
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+
+        <div class="session-user">
+            <strong>{{ session.get("username","使用者") }}</strong><br>
+            {{ session.get("role_name","") }}
+        </div>
+
+        <form method="post"
+              action="{{ url_for('logout') }}">
+
+            <button
+                class="menu-btn logout-btn"
+                type="submit">
+
+                登出
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+<!-- ================= Main ================= -->
+
+<div class="main-content">
+
+<div class="summary-card">
+
+<h2>資產總表</h2>
+
+<!-- ================= 查詢 ================= -->
+
+<div class="search-box">
+
+<form method="get"
+      action="{{ url_for('asset_summary') }}">
+
+<div class="search-item">
+
+<label>資產代碼</label>
+
+<input
+type="text"
+name="asset_id_code"
+value="{{ request.args.get('asset_id_code','') }}">
+
+</div>
+
+<div class="search-item">
+
+<label>資產名稱</label>
+
+<input
+type="text"
+name="asset_name"
+value="{{ request.args.get('asset_name','') }}">
+
+</div>
+
+<div class="search-item">
+
+<label>資產類型</label>
+
+<select name="asset_type">
+
+<option value="">全部</option>
+
+<option value="DA"
+{% if request.args.get("asset_type")=="DA" %}selected{% endif %}>
+DA－資料
+</option>
+
+<option value="DC"
+{% if request.args.get("asset_type")=="DC" %}selected{% endif %}>
+DC－文件
+</option>
+
+<option value="CM"
+{% if request.args.get("asset_type")=="CM" %}selected{% endif %}>
+CM－通訊
+</option>
+
+<option value="HW"
+{% if request.args.get("asset_type")=="HW" %}selected{% endif %}>
+HW－硬體
+</option>
+
+<option value="SW"
+{% if request.args.get("asset_type")=="SW" %}selected{% endif %}>
+SW－軟體
+</option>
+
+<option value="EV"
+{% if request.args.get("asset_type")=="EV" %}selected{% endif %}>
+EV－設備
+</option>
+
+<option value="PE"
+{% if request.args.get("asset_type")=="PE" %}selected{% endif %}>
+PE－人員
+</option>
+
+</select>
+
+</div>
+
+<div class="search-item">
+
+<label>權責單位</label>
+
+<input
+type="text"
+name="department"
+value="{{ request.args.get('department','') }}">
+
+</div>
+
+<div class="search-item">
+
+<label>保管單位</label>
+
+<input
+type="text"
+name="risk_owner"
+value="{{ request.args.get('risk_owner','') }}">
+
+</div>
+
+<div class="search-item">
+
+<label>資產價值</label>
+
+<select name="asset_value">
+
+<option value="">全部</option>
+
+{% for i in range(1,6) %}
+
+<option value="{{ i }}"
+{% if request.args.get("asset_value")==i|string %}
+selected
+{% endif %}>
+{{ i }}
+</option>
+
+{% endfor %}
+
+</select>
+
+</div>
+
+<div class="search-btn-group">
+
+<button
+type="submit"
+class="search-btn">
+
+查詢
+
+</button>
+
+<a href="{{ url_for('asset_summary') }}">
+
+<button
+type="button"
+class="reset-btn">
+
+清除
+
+</button>
+
+</a>
+
+</div>
+
+</form>
+
+</div>
+
+<!-- ================= Table ================= -->
+
+<div class="table-container">
+
+<table class="asset-table">
+
+<thead>
+
+<tr>
+
+<th>操作</th>
+
+<th>資產代碼</th>
+
+<th>資產類型</th>
+
+<th>資料類型</th>
+
+<th>資產名稱</th>
+
+<th>資產描述</th>
+
+<th>權責單位</th>
+
+<th>保管單位</th>
+
+<th>使用單位</th>
+
+<th>放置地點</th>
+
+<th>C</th>
+
+<th>I</th>
+
+<th>A</th>
+
+<th>L</th>
+
+<th>資產價值</th>
+
+<th>上傳者</th>
+
+<th>建立時間</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+{% if assets %}
+
+{% for asset in assets %}
+
+<tr>
+
+<td>
+
+<a href="{{ url_for('asset_edit', id=asset.id) }}">
+✏️
+</a>
+
+&nbsp;
+
+<a href="{{ url_for('asset_delete', id=asset.id) }}">
+🗑️
+</a>
+
+</td>
+
+<td>{{ asset.asset_id_code }}</td>
+
+<td>{{ asset.asset_type }}</td>
+
+<td>{{ asset.data_type }}</td>
+
+<td>{{ asset.asset_name }}</td>
+
+<td>{{ asset.description }}</td>
+
+<td>{{ asset.department }}</td>
+
+<td>{{ asset.risk_owner }}</td>
+
+<td>{{ asset.use_department }}</td>
+
+<td>{{ asset.location }}</td>
+
+<td>{{ asset.confidentiality }}</td>
+
+<td>{{ asset.integrity }}</td>
+
+<td>{{ asset.availability }}</td>
+
+<td>{{ asset.legality }}</td>
+
+<td>{{ asset.asset_value }}</td>
+
+<td>{{ asset.upload_user }}</td>
+
+<td>{{ asset.created_at }}</td>
+
+</tr>
+
+{% endfor %}
+
+{% else %}
+
+<tr>
+
+<td colspan="17"
+style="text-align:center;">
+
+目前沒有任何資產資料
+
+</td>
+
+</tr>
+
+{% endif %}
+
+</tbody>
+
+</table>
+
+</div>
+
+<div class="bottom-action">
+
+<a href="{{ url_for('asset_missing') }}">
+
+<div class="bottom-action">
+
+<a href="{{ url_for('asset_missing') }}">
+
+<button class="check-btn">
+
+🔍 檢視資產盤點缺漏
+
+</button>
+
+</a>
+
+</div>
+
+</div>
+
+</div>
+
+</body>
+
+</html>
