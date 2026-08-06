@@ -204,6 +204,8 @@ def asset_record(asset_id, company_id, code, name):
         "asset_value": 3,
         "upload_user": "Peggy",
         "created_at": "2026-08-01T00:00:00+00:00",
+        "status": "active",
+        "is_deleted": False,
     }
 
 
@@ -276,6 +278,23 @@ def test_excel_import_uses_session_company_id_and_ignores_excel_company_id(
     login_as(client, company_id=7)
 
     class FakeDataFrame:
+        columns = (
+            "資產代碼",
+            "資產類型",
+            "資料類型",
+            "資產名稱",
+            "資產描述",
+            "權責單位",
+            "保管單位(風險擁有者)",
+            "使用單位",
+            "放置地點",
+            "機密性",
+            "完整性",
+            "可用性",
+            "適法性",
+            "company_id",
+        )
+
         def iterrows(self):
             yield 0, {
                 "資產代碼": "XLS-001",
@@ -304,7 +323,9 @@ def test_excel_import_uses_session_company_id_and_ignores_excel_company_id(
 
     assert response.status_code == 302
     assert fake.inserted_payloads[0]["company_id"] == 7
+    assert fake.inserted_payloads[0]["company_id"] != 999
     assert fake.inserted_payloads[0]["asset_name"] == "Excel Asset"
+    assert fake.inserted_payloads[0]["status"] == "active"
 
 
 def test_current_company_cannot_modify_other_company_asset(app_module, monkeypatch):
@@ -366,7 +387,10 @@ def test_audit_failure_does_not_turn_successful_add_or_update_into_500(
     assert any(record["asset_name"] == "Changed" for record in fake.records["assets"])
 
 
-def test_delete_writes_best_effort_audit_with_no_asset_id(app_module, monkeypatch):
+def test_delete_soft_deletes_with_company_scope_and_writes_audit(
+    app_module,
+    monkeypatch,
+):
     fake = FakeSupabase([asset_record(1, 7, "A-001", "Company A Asset")])
     client = create_client(app_module, monkeypatch, fake)
     login_as(client, company_id=7)
@@ -374,7 +398,50 @@ def test_delete_writes_best_effort_audit_with_no_asset_id(app_module, monkeypatc
     response = client.post("/asset_delete/1")
 
     assert response.status_code == 302
-    assert fake.deleted_payloads[0]["id"] == 1
+    assert fake.deleted_payloads == []
+    update_query = next(
+        query
+        for query in fake.queries
+        if query["table"] == "assets" and query["update"] is not None
+    )
+    assert update_query["update"] == {
+        "status": "inactive",
+        "is_deleted": True,
+    }
+    assert ("id", 1) in update_query["filters"]
+    assert ("company_id", 7) in update_query["filters"]
+    assert len(fake.records["assets"]) == 1
+    assert fake.records["assets"][0]["id"] == 1
+    assert fake.records["assets"][0]["status"] == "inactive"
+    assert fake.records["assets"][0]["is_deleted"] is True
     assert fake.audit_payloads[0]["action"] == "刪除資產"
-    assert fake.audit_payloads[0]["asset_id"] is None
+    assert fake.audit_payloads[0]["asset_id"] == 1
     assert "asset_code" not in fake.audit_payloads[0]
+
+
+def test_delete_audit_failure_does_not_roll_back_successful_soft_delete(
+    app_module,
+    monkeypatch,
+):
+    fake = FakeSupabase(
+        [asset_record(1, 7, "A-001", "Company A Asset")],
+        fail_audit=True,
+    )
+    client = create_client(app_module, monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.post("/asset_delete/1")
+
+    assert response.status_code == 302
+    assert fake.deleted_payloads == []
+    assert len(fake.records["assets"]) == 1
+    assert fake.records["assets"][0]["id"] == 1
+    assert fake.records["assets"][0]["status"] == "inactive"
+    assert fake.records["assets"][0]["is_deleted"] is True
+    update_query = next(
+        query
+        for query in fake.queries
+        if query["table"] == "assets" and query["update"] is not None
+    )
+    assert ("id", 1) in update_query["filters"]
+    assert ("company_id", 7) in update_query["filters"]
