@@ -1,265 +1,194 @@
-<!--暫時測試後端用的前端介面 -->
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Genie 資安管理系統 - 風險評鑑</title>
-    <!-- 引入系統通用 style.css -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RiskGenie - 風險評鑑 (開發測試介面)</title>
     <style>
-        /* 風險評鑑專屬卡片與運算控制台佈局 */
-        .assess-layout {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .assess-card {
-            background-color: #ffffff;
-            border-radius: 8px;
-            padding: 25px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            border: 1px solid #e2e8f0;
-        }
-        .assess-card h2 {
-            font-size: 1.25rem;
-            color: #0f766e;
-            margin-top: 0;
-            border-bottom: 2px solid #f1f5f9;
-            padding-bottom: 12px;
-            margin-bottom: 20px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        .form-group label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #334155;
-            font-size: 0.9rem;
-        }
-        .form-control {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            background-color: #f8fafc;
-            box-sizing: border-box;
-            outline: none;
-            font-size: 0.95rem;
-            transition: all 0.2s;
-        }
-        .form-control:focus {
-            border-color: #0f766e;
-            background-color: #ffffff;
-            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.1);
-        }
-        .btn-run {
-            background-color: #0f766e;
-            color: #ffffff;
-            border: none;
-            padding: 14px;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            font-size: 1rem;
-            transition: background 0.2s;
-        }
-        .btn-run:hover {
-            background-color: #115e59;
-        }
-        
-        /* 回傳數據渲染樣式 */
-        .result-empty {
-            text-align: center;
-            color: #94a3b8;
-            padding: 60px 10px;
-            font-style: italic;
-            font-size: 0.95rem;
-        }
-        .result-show {
-            display: none;
-        }
-        .score-num {
-            font-size: 3rem;
-            font-weight: 800;
-            color: #0f766e;
-            text-align: center;
-            margin: 10px 0;
-        }
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 50px;
-            color: white;
-            font-weight: bold;
-            font-size: 0.85rem;
-        }
-        .bg-critical { background-color: #ef4444; }
-        .bg-high { background-color: #f97316; }
-        .bg-medium { background-color: #eab308; }
-        .bg-low { background-color: #22c55e; }
-        
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px dashed #e2e8f0;
-            font-size: 0.9rem;
-        }
-        .info-row span {
-            color: #64748b;
-        }
-        .info-row strong {
-            color: #1e293b;
-        }
-        .ai-box {
-            background-color: #f8fafc;
-            border-left: 4px solid #0f766e;
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 15px;
-            font-size: 0.9rem;
-            line-height: 1.6;
-            color: #334155;
-            white-space: pre-line;
-        }
+        body { font-family: "Segoe UI", Arial, sans-serif; margin: 30px; background-color: #f8f9fa; }
+        .container { max-width: 800px; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 8px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        select, input, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .btn { background-color: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-right: 10px; }
+        .btn:hover { background-color: #0056b3; }
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover { background-color: #218838; }
+        .result-box { margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 6px; }
+        .badge { padding: 4px 8px; border-radius: 4px; color: white; font-weight: bold; }
+        .bg-danger { background-color: #dc3545; }
+        .bg-warning { background-color: #ffc107; color: black; }
+        .bg-info { background-color: #17a2b8; }
+        .bg-secondary { background-color: #6c757d; }
     </style>
 </head>
 <body>
 
-    <!-- 側邊欄 (Sidebar) - 100% 沿用 index.html 及 asset_summary.html 導覽結構 [6] -->
-    <div class="sidebar">
-        <div class="sidebar-title">👤 Genie</div>
-        <a href="/"><button class="menu-btn">首  頁</button></a>
-        <a href="/summary"><button class="menu-btn">資產總表</button></a>
-        <a href="/assess"><button class="menu-btn active">風險評鑑</button></a>
-        <button class="menu-btn">權重設定</button>
-        <button class="menu-btn">ＡＩ建議</button>
-        <button class="menu-btn">建議報表</button>
-        <button class="menu-btn">帳號管理</button>
-        <div class="menu-footer"><button class="menu-btn">⚙️ 設定</button></div>
-    </div>
+<div class="container">
+    <h2>🛡️ RiskGenie 風險評鑑 (暫時測試介面)</h2>
+    <p>前端開發完成前，可使用此介面完整驗證「風險計算」與「資料寫入 Supabase」邏輯。</p>
+    <hr>
 
-    <!-- 主要內容區 (Main Content) -->
-    <div class="main-content">
-        <div class="content-wrapper">
-            <h1 class="page-title">資訊安全風險評鑑</h1>
-            
-            <div class="assess-layout">
-                <!-- 左側：輸入表單 -->
-                <div class="assess-card">
-                    <h2>⚙️ 選擇風險評鑑項目</h2>
-                    <form id="assessForm">
-                        <div class="form-group">
-                            <label for="assetSelect">選擇待評估資產：</label>
-                            <select id="assetSelect" class="form-control" required>
-                                <option value="" disabled selected>-- 請選擇資產 --</option>
-                                {% for asset in assets %}
-                                <option value="{{ asset.id }}">
-                                    [{{ asset.asset_id_code }}] {{ asset.asset_name }} (CIA 權重: {{ asset.confidentiality }}, {{ asset.integrity }}, {{ asset.availability }})
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="vulSelect">選擇關聯 CVE 弱點漏洞：</label>
-                            <select id="vulSelect" class="form-control" required>
-                                <option value="" disabled selected>-- 請選擇 CVE 漏洞 --</option>
-                                {% for vul in vulnerabilities %}
-                                <option value="{{ vul.id }}">
-                                    {{ vul.cve_id }} (CVSS 分數: {{ vul.cvss_score }} - {{ vul.severity }})
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <button type="submit" class="btn-run" id="btnSubmit">⚡ 執行風險評鑑計算</button>
-                    </form>
-                </div>
+    <form id="assessmentForm">
+        <div class="form-group">
+            <label for="assetSelect">1. 選擇評鑑資產：</label>
+            <select id="assetSelect" required onchange="onAssetChanged()">
+                <option value="">-- 請選擇資產 --</option>
+            </select>
+        </div>
 
-                <!-- 右側：API 結果顯示 -->
-                <div class="assess-card">
-                    <h2>📊 後端即時計算成果</h2>
-                    <div id="resultEmpty" class="result-empty">
-                        請於左側選擇資訊資產與關聯 CVE 漏洞，並點擊「執行風險評鑑計算」。
-                    </div>
-                    <div id="resultShow" class="result-show">
-                        <div class="score-num" id="resScore">0.0</div>
-                        <div style="text-align: center; margin-bottom: 20px;">
-                            <span class="badge" id="resLevel">Low</span>
-                        </div>
-                        <div class="info-row">
-                            <span>受評資產名稱</span>
-                            <strong id="resAssetName">-</strong>
-                        </div>
-                        <div class="info-row">
-                            <span>關聯漏洞編號</span>
-                            <strong id="resCveId">-</strong>
-                        </div>
-                        <p id="resVulDesc" style="font-size: 0.85rem; color: #64748b; margin-top: 10px; line-height: 1.5; margin-bottom: 20px;">-</p>
-                        
-                        <label style="font-weight: bold; font-size: 0.9rem; color: #334155;">💡 智慧防護與緩釋處置建議 (RAG)：</label>
-                        <div class="ai-box" id="resAiSuggestion"></div>
-                    </div>
-                </div>
+        <div style="display: flex; gap: 10px;" class="form-group">
+            <div style="flex: 1;">
+                <label>機密性 (C):</label>
+                <input type="number" id="confidentiality" min="1" max="5" value="3" required>
+            </div>
+            <div style="flex: 1;">
+                <label>完整性 (I):</label>
+                <input type="number" id="integrity" min="1" max="5" value="3" required>
+            </div>
+            <div style="flex: 1;">
+                <label>可用性 (A):</label>
+                <input type="number" id="availability" min="1" max="5" value="3" required>
+            </div>
+            <div style="flex: 1;">
+                <label>適法性 (L):</label>
+                <input type="number" id="legality" min="1" max="5" value="1" required>
             </div>
         </div>
+
+        <div class="form-group">
+            <label for="threatDescription">2. 威脅與弱點描述：</label>
+            <textarea id="threatDescription" rows="2" placeholder="例：伺服器未更新防毒軟體，易受勒索病毒攻擊"></textarea>
+        </div>
+
+        <div style="display: flex; gap: 10px;" class="form-group">
+            <div style="flex: 1;">
+                <label for="cvssScore">CVSS 弱點嚴重度 (0-10):</label>
+                <input type="number" id="cvssScore" step="0.1" min="0" max="10" value="7.5">
+            </div>
+            <div style="flex: 1;">
+                <label for="likelihoodScore">發生機率 (Likelihood 1-5):</label>
+                <input type="number" id="likelihoodScore" min="1" max="5" value="3">
+            </div>
+        </div>
+
+        <button type="button" class="btn" onclick="calculateRisk()">1. 計算風險值</button>
+        <button type="button" class="btn btn-success" onclick="saveAssessment()">2. 儲存評鑑結果</button>
+    </form>
+
+    <div class="result-box" id="resultBox" style="display: none;">
+        <h3>📊 評鑑計算結果：</h3>
+        <p><strong>資產價值/衝擊度 (Impact Score)：</strong> <span id="resImpact">-</span></p>
+        <p><strong>風險分數 (Risk Score)：</strong> <span id="resScore">-</span></p>
+        <p><strong>風險等級 (Risk Level)：</strong> <span id="resLevel" class="badge bg-secondary">-</span></p>
     </div>
+</div>
 
-    <!-- AJAX 非同步資料交換 JS -->
-    <script>
-        document.getElementById('assessForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const assetId = document.getElementById('assetSelect').value;
-            const vulnerabilityId = document.getElementById('vulSelect').value;
-            const btnSubmit = document.getElementById('btnSubmit');
+<script>
+    let currentAssets = [];
 
-            btnSubmit.disabled = true;
-            btnSubmit.innerText = '後端運算中...';
-
-            try {
-                const response = await fetch('/api/risk/assess', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        asset_id: parseInt(assetId),
-                        vulnerability_id: parseInt(vulnerabilityId)
-                    })
+    // 初始化頁面：載入資產清單
+    async function fetchAssets() {
+        try {
+            const res = await fetch('/api/risk-assessments/assets');
+            const data = await res.json();
+            if (data.success) {
+                currentAssets = data.assets;
+                const select = document.getElementById('assetSelect');
+                select.innerHTML = '<option value="">-- 請選擇資產 --</option>';
+                data.assets.forEach(asset => {
+                    select.innerHTML += `<option value="${asset.id}">[${asset.asset_id_code}] ${asset.asset_name}</option>`;
                 });
-                const result = await response.json();
-
-                if (result.status === 'success') {
-                    const data = result.data;
-                    document.getElementById('resultEmpty').style.display = 'none';
-                    document.getElementById('resultShow').style.display = 'block';
-
-                    document.getElementById('resScore').innerText = data.risk_score;
-                    document.getElementById('resAssetName').innerText = data.asset_name;
-                    document.getElementById('resCveId').innerText = data.cve_id;
-                    document.getElementById('resVulDesc').innerText = data.vulnerability_description;
-                    document.getElementById('resAiSuggestion').innerText = data.ai_suggestion;
-
-                    const levelBadge = document.getElementById('resLevel');
-                    levelBadge.innerText = data.risk_level;
-                    levelBadge.className = 'badge'; // 重置
-                    if (data.risk_level === 'Critical') levelBadge.classList.add('bg-critical');
-                    else if (data.risk_level === 'High') levelBadge.classList.add('bg-high');
-                    else if (data.risk_level === 'Medium') levelBadge.classList.add('bg-medium');
-                    else levelBadge.classList.add('bg-low');
-                } else {
-                    alert('評鑑失敗：' + result.message);
-                }
-            } catch (error) {
-                console.error(error);
-                alert('連線後端 API 伺服器發生異常。');
-            } finally {
-                btnSubmit.disabled = false;
-                btnSubmit.innerText = '⚡ 執行風險評鑑計算';
             }
+        } catch (err) {
+            alert('載入資產列表失敗！');
+        }
+    }
+
+    // 選取資產時自動帶入 C, I, A, L
+    function onAssetChanged() {
+        const assetId = document.getElementById('assetSelect').value;
+        const asset = currentAssets.find(a => a.id == assetId);
+        if (asset) {
+            document.getElementById('confidentiality').value = asset.confidentiality || 3;
+            document.getElementById('integrity').value = asset.integrity || 3;
+            document.getElementById('availability').value = asset.availability || 3;
+            document.getElementById('legality').value = asset.legality || 1;
+        }
+    }
+
+    // 發送 API 計算風險
+    async function calculateRisk() {
+        const payload = {
+            confidentiality: document.getElementById('confidentiality').value,
+            integrity: document.getElementById('integrity').value,
+            availability: document.getElementById('availability').value,
+            legality: document.getElementById('legality').value,
+            cvss_score: document.getElementById('cvssScore').value,
+            likelihood_score: document.getElementById('likelihoodScore').value
+        };
+
+        const res = await fetch('/api/risk-assessments/calculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
-    </script>
+
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('resultBox').style.display = 'block';
+            document.getElementById('resImpact').innerText = data.impact_score;
+            document.getElementById('resScore').innerText = data.risk_score;
+            
+            const levelElem = document.getElementById('resLevel');
+            levelElem.innerText = data.risk_level;
+            levelElem.className = 'badge ' + (
+                data.risk_level.includes('高') ? 'bg-danger' : 
+                data.risk_level.includes('中') ? 'bg-warning' : 'bg-info'
+            );
+            return data;
+        } else {
+            alert('計算失敗: ' + data.error);
+        }
+    }
+
+    // 儲存評鑑結果至 Supabase
+    async function saveAssessment() {
+        const assetId = document.getElementById('assetSelect').value;
+        if (!assetId) {
+            alert('請先選擇資產！');
+            return;
+        }
+
+        const calcData = await calculateRisk();
+        if (!calcData) return;
+
+        const payload = {
+            asset_id: parseInt(assetId),
+            threat_description: document.getElementById('threatDescription').value,
+            impact_score: calcData.impact_score,
+            likelihood_score: parseFloat(document.getElementById('likelihoodScore').value),
+            risk_score: calcData.risk_score,
+            risk_level: calcData.risk_level
+        };
+
+        const res = await fetch('/api/risk-assessments/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            alert('✅ 評鑑紀錄已成功寫入資料庫！');
+        } else {
+            alert('❌ 儲存失敗：' + data.error);
+        }
+    }
+
+    fetchAssets();
+</script>
+
 </body>
 </html>

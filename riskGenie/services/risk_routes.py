@@ -5,6 +5,7 @@
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 import logging
 import math
+from datetime import datetime
 
 # 💡 修復相對與絕對匯入防呆
 try:
@@ -21,6 +22,7 @@ try:
         is_gemini_configured,
     )
     from .report import export_report
+    from .supabase_client import get_supabase_client
 except ImportError:
     from services.risk_service import (
         InvalidFormulaTypeError,
@@ -35,6 +37,7 @@ except ImportError:
         is_gemini_configured,
     )
     from services.report import export_report
+    from services.supabase_client import get_supabase_client
 
 risk_bp = Blueprint('risk', __name__)
 logger = logging.getLogger(__name__)
@@ -143,6 +146,10 @@ def _validate_weight_payload(data):
     }
 
 
+# ==========================================
+# 權重設定 相關頁面與 API
+# ==========================================
+
 @risk_bp.route('/weight_setting', methods=['GET', 'POST'])
 def weight_setting_page():
     """渲染權重設定網頁頁面"""
@@ -173,13 +180,6 @@ def weight_setting_page():
             return render_template('weight_setting.html', error="權重設定儲存失敗"), 503
 
     return render_template('weight_setting.html')
-
-
-@risk_bp.route('/risk_assessment')
-def risk_assessment_page():
-    if not session.get("logged_in"):
-        return redirect(url_for('login'))
-    return render_template('risk_assessment.html')
 
 
 @risk_bp.route('/api/weight-settings', methods=['GET'])
@@ -252,24 +252,188 @@ def save_weight_settings_api():
         )
 
 
-@risk_bp.route('/api/risk-assessments/calculate', methods=['POST'])
-def calculate_risk_api():
+# ==========================================
+# 風險評鑑 相關頁面與 API
+# ==========================================
+
+@risk_bp.route('/risk_assessment')
+def risk_assessment_page():
+    """風險評鑑主頁面"""
+    if not session.get("logged_in"):
+        return redirect(url_for('login'))
+    return render_template('risk_assessment.html')
+
+
+@risk_bp.route('/api/risk-assessments/assets', methods=['GET'])
+def get_assessment_assets_api():
+    """API：取得適用評鑑的資產清單"""
     if not session.get("logged_in"):
         return _json_error("未登入系統", "UNAUTHORIZED", 401)
-    if _session_company_id() is None:
+    company_id = _session_company_id()
+    if company_id is None:
         return _company_context_required_response(api_request=True)
-    return jsonify({"message": "風險計算 API 調用成功"}), 200
+
+    try:
+        supabase = get_supabase_client()
+        res = (
+            supabase.table("assets")
+            .select("id, asset_id_code, asset_name, asset_type, confidentiality, integrity, availability, legality, asset_value")
+            .eq("company_id", company_id)
+            .eq("status", "active")
+            .execute()
+        )
+        return jsonify({"success": True, "assets": res.data or []}), 200
+    except Exception as e:
+        logger.exception("取得資產列表失敗: %s", e)
+        return _json_error("無法載入資產列表", "FETCH_ASSETS_FAILED", 500)
+
+
+@risk_bp.route('/api/risk-assessments/calculate', methods=['POST'])
+def calculate_risk_api():
+    """API：計算資產價值與風險分數"""
+    if not session.get("logged_in"):
+        return _json_error("未登入系統", "UNAUTHORIZED", 401)
+    company_id = _session_company_id()
+    if company_id is None:
+        return _company_context_required_response(api_request=True)
+
+    data = request.get_json(silent=True) or {}
+    try:
+        c = float(data.get("confidentiality", 0))
+        i = float(data.get("integrity", 0))
+        a = float(data.get("availability", 0))
+        l = float(data.get("legality", 0))
+        cvss = float(data.get("cvss_score", 0))
+        likelihood = float(data.get("likelihood_score", 1))
+
+        # 1. 取得公司權重設定
+        weight_settings = RiskService.get_weight_settings(company_id)
+        formula_type = weight_settings.get("formula_type", "max")
+        wc = weight_settings.get("weight_c", 0.3333)
+        wi = weight_settings.get("weight_i", 0.3333)
+        wa = weight_settings.get("weight_a", 0.3333)
+
+        # 2. 計算資產價值 (Impact Value / Asset Value)
+        if formula_type == "weighted_average":
+            asset_value = round((c * wc) + (i * wi) + (a * wa), 2)
+            # 若包含適法性 L，可彈性取 max 或併入計算
+            impact_score = max(asset_value, l)
+        else: #預設 max
+            impact_score = max(c, i, a, l)
+
+        # 3. 計算風險值 (Risk Value = Asset Impact * Threat/Vulnerability Likelihood)
+        # 簡易標準公式：Impact * Likelihood * (CVSS / 10)
+        vulnerability_factor = (cvss / 10.0) if cvss > 0 else 1.0
+        risk_score = round(impact_score * likelihood * vulnerability_factor, 2)
+
+        # 4. 定義風險等級
+        if risk_score >= 12:
+            risk_level = "極高風險"
+        elif risk_score >= 8:
+            risk_level = "高風險"
+        elif risk_score >= 4:
+            risk_level = "中風險"
+        else:
+            risk_level = "低風險"
+
+        return jsonify({
+            "success": True,
+            "impact_score": impact_score,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "formula_used": formula_type
+        }), 200
+
+    except Exception as exc:
+        logger.exception("風險計算失敗: %s", exc)
+        return _json_error("風險數值計算異常", "CALCULATION_ERROR", 400)
+
+
+@risk_bp.route('/api/risk-assessments/save', methods=['POST'])
+def save_risk_assessment_api():
+    """API：儲存評鑑結果"""
+    if not session.get("logged_in"):
+        return _json_error("未登入系統", "UNAUTHORIZED", 401)
+    company_id = _session_company_id()
+    if company_id is None:
+        return _company_context_required_response(api_request=True)
+
+    data = request.get_json(silent=True) or {}
+    asset_id = data.get("asset_id")
+    vulnerability_name = data.get("vulnerability_name", "通用弱點")
+    threat_description = data.get("threat_description", "")
+    impact_score = data.get("impact_score")
+    likelihood_score = data.get("likelihood_score")
+    risk_score = data.get("risk_score")
+    risk_level = data.get("risk_level")
+
+    if not asset_id or risk_score is None:
+        return _json_error("缺少必要的評鑑欄位", "MISSING_FIELDS", 400)
+
+    try:
+        supabase = get_supabase_client()
+        user_id = session.get("user_id")
+
+        assessment_payload = {
+            "asset_id": asset_id,
+            "threat_description": threat_description,
+            "impact_score": impact_score,
+            "likelihood_score": likelihood_score,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "uploaded_by": user_id,
+            "company_id": company_id,
+            "created_at": datetime.now().isoformat()
+        }
+
+        # 寫入 risk_assessments 資料表
+        result = supabase.table("risk_assessments").insert(assessment_payload).execute()
+
+        # 寫入 audit_logs 稽核紀錄
+        try:
+            supabase.table("audit_logs").insert({
+                "user_id": user_id,
+                "action": "進行風險評鑑",
+                "asset_id": asset_id,
+                "ip_address": request.remote_addr,
+                "status": "成功",
+                "log_time": datetime.now().isoformat()
+            }).execute()
+        except Exception:
+            logger.warning("評鑑稽核日誌寫入失敗（不影響主程序）")
+
+        return jsonify({"success": True, "data": result.data}), 201
+
+    except Exception as exc:
+        logger.exception("儲存評鑑紀錄失敗: %s", exc)
+        return _json_error("無法儲存風險評鑑結果", "SAVE_ASSESSMENT_FAILED", 500)
 
 
 @risk_bp.route('/api/risk-assessments', methods=['GET'])
 def get_historical_assessments_api():
+    """取得歷史評鑑紀錄 API"""
     if not session.get("logged_in"):
         return _json_error("未登入系統", "UNAUTHORIZED", 401)
-    if _session_company_id() is None:
+    company_id = _session_company_id()
+    if company_id is None:
         return _company_context_required_response(api_request=True)
-    return jsonify([]), 200
 
-#風險評鑑AI建議
+    try:
+        supabase = get_supabase_client()
+        res = (
+            supabase.table("risk_assessments")
+            .select("*, assets(asset_name, asset_id_code)")
+            .eq("company_id", company_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return jsonify({"success": True, "assessments": res.data or []}), 200
+    except Exception as e:
+        logger.exception("取得評鑑紀錄失敗: %s", e)
+        return jsonify({"success": True, "assessments": []}), 200
+
+
+# 風險評鑑 AI 建議 API
 @risk_bp.route("/ai-advice", methods=["POST"])
 def ai_advice():
     if not session.get("logged_in"):
@@ -332,7 +496,8 @@ def ai_advice():
             "code": "GEMINI_SERVICE_FAILED",
         }), 503
 
-#報表
+
+# 報表匯出 API
 @risk_bp.route("/export", methods=["GET"])
 def export():
     if not session.get("logged_in"):
