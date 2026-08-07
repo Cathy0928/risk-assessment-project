@@ -15,12 +15,11 @@ try:
         RiskServiceValidationError,
         normalize_formula_type,
     )
-    from .risk_ai import (
-        GeminiConfigurationError,
-        GeminiServiceError,
-        generate_risk_advice,
-        is_gemini_configured,
+    # AI Advisor (RAG)
+    from .rag_service import (
+        generate_advice,
     )
+
     from .report import export_report
     from .supabase_client import get_supabase_client
 except ImportError:
@@ -30,18 +29,17 @@ except ImportError:
         RiskServiceValidationError,
         normalize_formula_type,
     )
-    from services.risk_ai import (
-        GeminiConfigurationError,
-        GeminiServiceError,
-        generate_risk_advice,
-        is_gemini_configured,
+    # AI Advisor (RAG)
+    from services.rag_service import (
+        generate_advice,
     )
+
     from services.report import export_report
     from services.supabase_client import get_supabase_client
 
 risk_bp = Blueprint('risk', __name__)
 logger = logging.getLogger(__name__)
-AI_REQUIRED_FIELDS = ("asset_name", "cia", "cvss", "risk_score")
+#AI_REQUIRED_FIELDS = ("asset_name", "cia", "cvss", "risk_score")
 COMPANY_CONTEXT_ERROR = "帳號缺少公司識別資訊"
 
 
@@ -433,68 +431,175 @@ def get_historical_assessments_api():
         return jsonify({"success": True, "assessments": []}), 200
 
 
-# 風險評鑑 AI 建議 API
+# ==========================================
+# 風險評鑑 AI Advisor API (RAG)
+# ==========================================
+
 @risk_bp.route("/ai-advice", methods=["POST"])
 def ai_advice():
+
+    """
+    AI風險建議 API
+
+    流程:
+    1. 接收風險評鑑結果
+    2. 組合資產資訊
+    3. RAG搜尋CVE / ISO27002資料
+    4. Gemini產生改善建議
+    5. 回傳AI建議
+    """
+
+
+    # 登入驗證
     if not session.get("logged_in"):
+
         return jsonify({
             "success": False,
             "error": "Unauthorized",
-            "code": "UNAUTHORIZED",
-        }), 401
-    if _session_company_id() is None:
-        return _company_context_required_response(api_request=True)
+            "code": "UNAUTHORIZED"
+        }),401
 
-    if not request.is_json:
-        return jsonify({
-            "success": False,
-            "error": "請使用 JSON 格式送出 AI 建議請求。",
-            "code": "INVALID_JSON",
-        }), 400
+
+
+    # 公司驗證
+    if _session_company_id() is None:
+
+        return _company_context_required_response(
+            api_request=True
+        )
+
+
 
     data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({
-            "success": False,
-            "error": "JSON 內容無效。",
-            "code": "INVALID_JSON",
-        }), 400
 
-    missing_fields = [
-        field for field in AI_REQUIRED_FIELDS
-        if data.get(field) is None or data.get(field) == ""
-    ]
-    if missing_fields:
-        return jsonify({
-            "success": False,
-            "error": "缺少必要欄位。",
-            "code": "MISSING_FIELDS",
-            "missing_fields": missing_fields,
-        }), 400
 
-    if not is_gemini_configured():
+    if not isinstance(data,dict):
+
         return jsonify({
-            "success": False,
-            "error": "Gemini API Key 尚未設定，請在環境變數設定 GEMINI_API_KEY。",
-            "code": "GEMINI_NOT_CONFIGURED",
-        }), 503
+
+            "success":False,
+
+            "error":"JSON格式錯誤",
+
+            "code":"INVALID_JSON"
+
+        }),400
+
+
+
+    asset_name=data.get("asset_name")
+
+
+    if not asset_name:
+
+        return jsonify({
+
+            "success":False,
+
+            "error":"缺少資產名稱",
+
+            "code":"MISSING_ASSET"
+
+        }),400
+
+
 
     try:
-        result = generate_risk_advice(data)
-        return jsonify(result), 200
-    except GeminiConfigurationError:
-        logger.exception("Gemini configuration error.")
+
+
+        # ==========================
+        # 建立 RAG 查詢內容
+        # ==========================
+
+
+        asset_info=f"""
+
+資產名稱:
+{asset_name}
+
+
+資產描述:
+{data.get('description','')}
+
+
+CIA評估:
+
+機密性(C):
+{data.get('confidentiality',0)}
+
+
+完整性(I):
+{data.get('integrity',0)}
+
+
+可用性(A):
+{data.get('availability',0)}
+
+
+漏洞資訊:
+
+CVSS:
+{data.get('cvss',0)}
+
+
+目前風險分數:
+{data.get('risk_score',0)}
+
+請分析此資產可能存在的資安風險，
+並提供改善建議。
+
+"""
+
+
+
+        # ==========================
+        # 呼叫 RAG + Gemini
+        # ==========================
+
+        advice = generate_advice(
+            asset_info
+        )
+
+
+
         return jsonify({
-            "success": False,
-            "error": "Gemini 服務尚未正確設定。",
-            "code": "GEMINI_NOT_CONFIGURED",
-        }), 503
-    except GeminiServiceError:
+
+            "success":True,
+
+            "asset_name":asset_name,
+
+            "advice":advice
+
+        }),200
+
+
+
+
+    except Exception as e:
+
+
+        logger.exception(
+            "AI Advisor failed:%s",
+            e
+        )
+
+
         return jsonify({
-            "success": False,
-            "error": "Gemini 服務暫時無法產生建議，請稍後再試。",
-            "code": "GEMINI_SERVICE_FAILED",
-        }), 503
+
+            "success":False,
+
+            "error":"AI風險建議產生失敗",
+
+            "code":"AI_ADVISOR_FAILED"
+
+        }),503
+    
+@risk_bp.route("/ai-test")
+def ai_test():
+
+    return render_template(
+        "risk_ai_test.html"
+    )
 
 
 # 報表匯出 API

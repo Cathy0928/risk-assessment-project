@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>RiskGenie AI風險評鑑</title>
+
+
+<style>
+
+body {
+
+    font-family:
+    "Microsoft JhengHei",
+    Arial;
+
+    background:#f4f6f8;
+
+    padding:40px;
+
+}
+
+
+.container {
+
+    width:850px;
+
+    margin:auto;
+
+    background:white;
+
+    padding:30px;
+
+    border-radius:10px;
+
+    box-shadow:0 3px 10px #ccc;
+
+}
+
+
+
+h1 {
+
+    text-align:center;
+
+    color:#1f4e79;
+
+}
+
+
+
+label {
+
+    display:block;
+
+    margin-top:15px;
+
+    font-weight:bold;
+
+}
+
+
+
+input,
+textarea {
+
+
+    width:100%;
+
+    padding:10px;
+
+    margin-top:5px;
+
+    border:1px solid #ccc;
+
+    border-radius:5px;
+
+}
+
+
+
+textarea {
+
+    height:80px;
+
+}
+
+
+
+button {
+
+
+    margin-top:20px;
+
+    width:100%;
+
+    padding:12px;
+
+    background:#1f77d0;
+
+    color:white;
+
+    border:none;
+
+    border-radius:5px;
+
+    font-size:16px;
+
+    cursor:pointer;
+
+
+}
+
+
+
+button:hover {
+
+
+    background:#155a9c;
+
+
+}
+
+
+
+.result {
+
+
+    margin-top:30px;
+
+    background:#f8f9fa;
+
+    padding:20px;
+
+    border-radius:8px;
+
+    border-left:5px solid #1f77d0;
+
+
+}
+
+
+
+pre {
+
+
+    white-space:pre-wrap;
+
+    font-family:
+    "Microsoft JhengHei";
+
+    line-height:1.8;
+
+
+}
+
+
+.loading {
+
+
+    color:#1f77d0;
+
+    font-weight:bold;
+
+}
+
+
+</style>
+
+
+</head>
+
+
+
+<body>
+
+
+<div class="container">
+
+
+<h1>
+RiskGenie AI 資安風險評鑑
+</h1>
+
+
+
+<label>
+資產名稱
+</label>
+
+
+<input
+id="asset_name"
+value="Apache Web Server 2.4">
+
+
+
+<label>
+資產描述
+</label>
+
+
+<textarea id="description">
+
+公開網站服務，提供企業網站服務，並存放使用者個人資料。
+
+</textarea>
+
+
+
+<label>
+機密性 Confidentiality (C)
+</label>
+
+
+<input
+id="confidentiality"
+value="5">
+
+
+
+<label>
+完整性 Integrity (I)
+</label>
+
+
+<input
+id="integrity"
+value="5">
+
+
+
+<label>
+可用性 Availability (A)
+</label>
+
+
+<input
+id="availability"
+value="4">
+
+
+
+<label>
+CVSS 分數
+</label>
+
+
+<input
+id="cvss"
+value="9.8">
+
+
+
+<label>
+風險值
+</label>
+
+
+<input
+id="risk_score"
+value="43.5">
+
+
+
+<button onclick="sendAI()">
+
+🚀 執行 RAG + Gemini AI風險分析
+
+</button>
+
+
+
+
+<div class="result" id="result">
+
+
+等待 AI 分析...
+
+
+</div>
+
+
+
+</div>
+
+
+
+
+
+<script>
+
+
+async function sendAI(){
+
+
+    const result =
+    document.getElementById(
+        "result"
+    );
+
+
+    result.innerHTML = `
+
+    <div class="loading">
+
+    🤖 AI分析中...<br>
+
+    正在進行：
+    <br>
+    1. CVE向量檢索(RAG)
+    <br>
+    2. Gemini風險分析
+    <br>
+    3. 產生改善建議
+
+    </div>
+
+    `;
+
+
+
+    const data = {
+
+
+        asset_name:
+        document.getElementById(
+            "asset_name"
+        ).value,
+
+
+        description:
+        document.getElementById(
+            "description"
+        ).value,
+
+
+        confidentiality:
+        Number(
+            document.getElementById(
+                "confidentiality"
+            ).value
+        ),
+
+
+        integrity:
+        Number(
+            document.getElementById(
+                "integrity"
+            ).value
+        ),
+
+
+        availability:
+        Number(
+            document.getElementById(
+                "availability"
+            ).value
+        ),
+
+
+        cvss:
+        Number(
+            document.getElementById(
+                "cvss"
+            ).value
+        ),
+
+
+        risk_score:
+        Number(
+            document.getElementById(
+                "risk_score"
+            ).value
+        )
+
+
+    };
+
+
+
+
+    try {
+
+
+        const response =
+        await fetch(
+            "/risk/ai-advice",
+            {
+
+                method:"POST",
+
+                headers:{
+
+                    "Content-Type":
+                    "application/json"
+
+                },
+
+
+                body:
+                JSON.stringify(data)
+
+            }
+
+        );
+
+
+
+        const json =
+        await response.json();
+
+
+
+
+        if(json.success){
+
+
+
+            result.innerHTML = `
+
+            <h2>
+            ✅ AI風險評鑑結果
+            </h2>
+
+
+            <pre>
+${json.advice}
+            </pre>
+
+
+            `;
+
+
+
+        }
+
+        else{
+
+
+            result.innerHTML = `
+
+            <h2>
+            ❌ AI分析失敗
+            </h2>
+
+
+            ${json.error}
+
+
+            `;
+
+
+        }
+
+
+
+    }
+
+
+    catch(error){
+
+
+        result.innerHTML = `
+
+
+        <h2>
+        ❌ API連線失敗
+        </h2>
+
+
+        ${error}
+
+
+        `;
+
+
+    }
+
+
+
+}
+
+
+
+</script>
+
+
+
+</body>
+
+
+</html>
