@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風險評鑑-AI建議 - RiskGenie</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/risk_assessment_result.css') }}?v=1.0">
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="sidebar-title">RiskGenie</div>
+
+    <a href="{{ url_for('home') }}"><button class="menu-btn">首 頁</button></a>
+    <a href="{{ url_for('asset_summary') }}"><button class="menu-btn">資產總表</button></a>
+    <a href="{{ url_for('risk_assessment') }}"><button class="menu-btn active">風險評鑑</button></a>
+    <a href="{{ url_for('weight_setting') }}"><button class="menu-btn">權重設定</button></a>
+    <a href="{{ url_for('ai_advice') }}"><button class="menu-btn">AI建議</button></a>
+    <button class="menu-btn">建議報表</button>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+        <div class="session-user">
+            <strong>{{ session.get("username", "使用者") }}</strong>
+        </div>
+        <form action="{{ url_for('logout') }}" method="post">
+            <button class="menu-btn logout-btn" type="submit">登出</button>
+        </form>
+    </div>
+</div>
+
+<div class="main-content">
+    <div class="content-wrapper">
+        <h1 class="page-title">風險評鑑-AI建議</h1>
+
+        <div class="table-card">
+            <table class="result-table">
+                <thead>
+                    <tr>
+                        <th>名稱</th>
+                        <th>弱點與威脅</th>
+                        <th>風險分數</th>
+                        <th>處理策略</th>
+                        <th>AI建議</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>資料庫</td>
+                        <td>離線備份失效</td>
+                        <td><span class="score-high">90</span></td>
+                        <td>風險降低</td>
+                        <td>確保有3份資料<br>存放於兩種媒介</td>
+                    </tr>
+                    <tr>
+                        <td>舊電腦</td>
+                        <td>系統停止更新<br>弱點暴露</td>
+                        <td><span class="score-low">30</span></td>
+                        <td>風險規避</td>
+                        <td>停止使用此設備，轉移開發環境</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="action-container">
+            <a href="{{ url_for('risk_assessment') }}">
+                <button type="button" class="confirm-btn">確 認</button>
+            </a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
