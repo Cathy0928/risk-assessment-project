@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>資產盤點-AI建議 - RiskGenie</title>
+
+    <!-- 引用專屬獨立 CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/asset_inventory_result.css') }}?v=1.0">
+</head>
+<body>
+
+<!-- 左側邊欄 Sidebar (使用統一 RiskGenie 風格) -->
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        RiskGenie
+    </div>
+
+    <a href="{{ url_for('home') }}">
+        <button class="menu-btn">首 頁</button>
+    </a>
+
+    <a href="{{ url_for('asset_summary') }}">
+        <button class="menu-btn active">資產總表</button>
+    </a>
+
+    <a href="{{ url_for('risk_assessment') }}">
+        <button class="menu-btn">風險評鑑</button>
+    </a>
+
+    <a href="{{ url_for('weight_setting') }}">
+        <button class="menu-btn">權重設定</button>
+    </a>
+
+    <a href="{{ url_for('ai_advice') }}">
+        <button class="menu-btn">AI建議</button>
+    </a>
+
+    <button class="menu-btn">建議報表</button>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+
+        <div class="session-user">
+            <strong>{{ session.get("username", "使用者") }}</strong><br>
+            {{ session.get("role_name", "") }}
+        </div>
+
+        <form action="{{ url_for('logout') }}" method="post">
+            <button class="menu-btn logout-btn" type="submit">
+                登出
+            </button>
+        </form>
+
+    </div>
+
+</div>
+
+<!-- 右側主要內容區 -->
+<div class="main-content">
+
+    <div class="content-wrapper">
+
+        <h1 class="page-title">資產盤點-AI建議</h1>
+
+        <!-- 外框黑框表格容器 -->
+        <div class="table-card">
+            <table class="result-table">
+                <thead>
+                    <tr>
+                        <th>名稱</th>
+                        <th>類別</th>
+                        <th>AI改善建議</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>一般文件_電子公文</td>
+                        <td>DA</td>
+                        <td>針對失效文件應由專人統一進行銷毀並填寫銷毀紀錄</td>
+                    </tr>
+                    <tr>
+                        <td>機密文件_電子公文</td>
+                        <td>DA</td>
+                        <td>針對敏感度較高的文件，系統應強制啟用動態浮水印</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 下方確認按鈕 (點擊跳轉回資產總表) -->
+        <div class="action-container">
+            <a href="{{ url_for('asset_summary') }}">
+                <button type="button" class="confirm-btn">確 認</button>
+            </a>
+        </div>
+
+    </div>
+
+</div>
+
+</body>
+</html>
