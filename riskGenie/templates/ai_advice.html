@@ -6,7 +6,7 @@
     <title>AI 建議 - Genie</title>
     <!-- FontAwesome 圖示庫 -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 
@@ -38,16 +38,532 @@
     <main class="main-content center-content">
         <h1 class="page-title">AI建議</h1>
 
-        <!-- 中央按鈕容器 -->
-        <div class="card-options-container">
-            <a href="#" class="option-card">
-                <span>資產盤點</span>
-            </a>
-            <a href="#" class="option-card">
-                <span>風險評鑑</span>
-            </a>
+        <!-- ========================= -->
+        <!-- 資產資訊 -->
+        <!-- ========================= -->
+
+        <div class="ai-card">
+
+            <h2>
+                <i class="fa-solid fa-robot"></i>
+                AI 風險分析
+            </h2>
+
+            <div class="form-group">
+
+                <label>
+                    資產名稱
+                </label>
+
+                <input
+                    type="text"
+                    id="asset_name"
+                    placeholder="例如：Apache Web Server 2.4"
+                >
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label>
+                    資產描述
+                </label>
+
+                <textarea
+                    id="description"
+                    placeholder="例如：公開網站服務，儲存使用者資料"
+                ></textarea>
+
+            </div>
+
+
+            <!-- CIA -->
+
+            <div class="cia-container">
+
+                <div class="form-group">
+
+                    <label>
+                        機密性 C
+                    </label>
+
+                    <input
+                        type="number"
+                        id="confidentiality"
+                        min="1"
+                        max="5"
+                        value="5"
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label>
+                        完整性 I
+                    </label>
+
+                    <input
+                        type="number"
+                        id="integrity"
+                        min="1"
+                        max="5"
+                        value="5"
+                    >
+
+                </div>
+
+
+                <div class="form-group">
+
+                    <label>
+                        可用性 A
+                    </label>
+
+                    <input
+                        type="number"
+                        id="availability"
+                        min="1"
+                        max="5"
+                        value="4"
+                    >
+
+                </div>
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label>
+                    CVSS
+                </label>
+
+                <input
+                    type="number"
+                    id="cvss"
+                    min="0"
+                    max="10"
+                    step="0.1"
+                    value="9.8"
+                >
+
+            </div>
+
+
+            <div class="form-group">
+
+                <label>
+                    目前風險分數
+                </label>
+
+                <input
+                    type="number"
+                    id="risk_score"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value="9.8"
+                >
+
+            </div>
+
+
+            <!-- AI 按鈕 -->
+
+            <button
+                class="ai-btn"
+                onclick="generateAIAdvice()"
+                id="aiButton">
+
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+
+                產生 AI 風險建議
+
+            </button>
+
         </div>
+
+
+        <!-- ========================= -->
+        <!-- Loading -->
+        <!-- ========================= -->
+
+        <div
+            id="loading"
+            class="loading"
+            style="display:none;">
+
+            <i class="fa-solid fa-spinner fa-spin"></i>
+
+            AI 正在分析資產與 RAG 漏洞資料...
+
+        </div>
+
+
+        <!-- ========================= -->
+        <!-- AI 結果 -->
+        <!-- ========================= -->
+
+        <div
+            id="resultCard"
+            class="ai-result-card"
+            style="display:none;">
+
+            <h2>
+
+                <i class="fa-solid fa-shield-halved"></i>
+
+                AI 風險分析結果
+
+            </h2>
+
+
+            <div class="asset-result">
+
+                <strong>
+                    資產：
+                </strong>
+
+                <span id="resultAssetName"></span>
+
+            </div>
+
+
+            <div class="advice-content">
+
+                <pre id="adviceText"></pre>
+
+            </div>
+
+        </div>
+
+
+        <!-- ========================= -->
+        <!-- Error -->
+        <!-- ========================= -->
+
+        <div
+            id="errorMessage"
+            class="error-message"
+            style="display:none;">
+
+        </div>
+
     </main>
+
+
+    <!-- ========================= -->
+    <!-- JavaScript -->
+    <!-- ========================= -->
+
+    <script>
+
+        // =========================
+        // 頁面載入時取得風險評鑑資料
+        // =========================
+
+        window.addEventListener("DOMContentLoaded", function() {
+
+            const params = new URLSearchParams(
+                window.location.search
+            );
+
+            const assetName =
+                params.get("asset_name");
+
+            const description =
+                params.get("description");
+
+            const confidentiality =
+                params.get("confidentiality");
+
+            const integrity =
+                params.get("integrity");
+
+            const availability =
+                params.get("availability");
+
+            const cvss =
+                params.get("cvss");
+
+            const riskScore =
+                params.get("risk_score");
+
+            const threatDescription =
+                params.get("threat_description");
+
+            const riskLevel =
+                params.get("risk_level");
+
+            const likelihoodScore =
+                params.get("likelihood_score");
+
+
+            // =========================
+            // 將風險評鑑資料帶入畫面
+            // =========================
+
+            if (assetName) {
+
+                document.getElementById(
+                    "asset_name"
+                ).value = assetName;
+
+            }
+
+            if (description) {
+
+                document.getElementById(
+                    "description"
+                ).value = description;
+
+            }
+
+            if (confidentiality) {
+
+                document.getElementById(
+                    "confidentiality"
+                ).value = confidentiality;
+
+            }
+
+            if (integrity) {
+
+                document.getElementById(
+                    "integrity"
+                ).value = integrity;
+
+            }
+
+            if (availability) {
+
+                document.getElementById(
+                    "availability"
+                ).value = availability;
+
+            }
+
+            if (cvss) {
+
+                document.getElementById(
+                    "cvss"
+                ).value = cvss;
+
+            }
+
+            if (riskScore) {
+
+                document.getElementById(
+                    "risk_score"
+                ).value = riskScore;
+
+            }
+
+
+            // =========================
+            // 如果是從風險評鑑頁面跳轉
+            // 自動產生 AI 建議
+            // =========================
+
+            if (assetName && riskScore) {
+
+                generateAIAdvice();
+
+            }
+
+        });
+
+
+        async function generateAIAdvice() {
+
+            const button =
+                document.getElementById("aiButton");
+
+            const loading =
+                document.getElementById("loading");
+
+            const resultCard =
+                document.getElementById("resultCard");
+
+            const errorMessage =
+                document.getElementById("errorMessage");
+
+
+            // 清除之前結果
+
+            resultCard.style.display = "none";
+
+            errorMessage.style.display = "none";
+
+
+            // 取得輸入資料
+
+            const assetName =
+                document.getElementById("asset_name").value.trim();
+
+            const description =
+                document.getElementById("description").value.trim();
+
+            const confidentiality =
+                document.getElementById("confidentiality").value;
+
+            const integrity =
+                document.getElementById("integrity").value;
+
+            const availability =
+                document.getElementById("availability").value;
+
+            const cvss =
+                document.getElementById("cvss").value;
+
+            const riskScore =
+                document.getElementById("risk_score").value;
+
+
+            // 檢查資產名稱
+
+            if (!assetName) {
+
+                errorMessage.innerText =
+                    "請輸入資產名稱";
+
+                errorMessage.style.display =
+                    "block";
+
+                return;
+
+            }
+
+
+            // Loading
+
+            loading.style.display =
+                "block";
+
+            button.disabled =
+                true;
+
+
+            try {
+
+                // =========================
+                // 呼叫 Flask API
+                // =========================
+
+                const response =
+                    await fetch(
+                        "{{ url_for('risk.ai_advice') }}",
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json"
+                            },
+
+                            body: JSON.stringify({
+
+                                asset_name:
+                                    assetName,
+
+                                description:
+                                    description,
+
+                                confidentiality:
+                                    Number(confidentiality),
+
+                                integrity:
+                                    Number(integrity),
+
+                                availability:
+                                    Number(availability),
+
+                                cvss:
+                                    Number(cvss),
+
+                                risk_score:
+                                    Number(riskScore)
+
+                            })
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                // =========================
+                // API 錯誤
+                // =========================
+
+                if (!response.ok ||
+                    !data.success) {
+
+                    throw new Error(
+                        data.error ||
+                        "AI 建議產生失敗"
+                    );
+
+                }
+
+
+                // =========================
+                // 顯示 AI 結果
+                // =========================
+
+                document.getElementById(
+                    "resultAssetName"
+                ).innerText =
+                    data.asset_name;
+
+
+                document.getElementById(
+                    "adviceText"
+                ).innerText =
+                    data.advice;
+
+
+                resultCard.style.display =
+                    "block";
+
+
+            }
+
+            catch (error) {
+
+                console.error(
+                    "AI Advisor Error:",
+                    error
+                );
+
+
+                errorMessage.innerText =
+                    error.message ||
+                    "AI 建議產生失敗";
+
+
+                errorMessage.style.display =
+                    "block";
+
+            }
+
+            finally {
+
+                loading.style.display =
+                    "none";
+
+                button.disabled =
+                    false;
+
+            }
+
+        }
+
+    </script>
 
 </body>
 </html>
