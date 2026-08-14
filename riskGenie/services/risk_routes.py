@@ -1150,7 +1150,6 @@ def ai_advice_page():
         has_assessment=has_assessment
     )
 
-
 # ============================================================
 # AI Advisor API
 # ============================================================
@@ -1162,21 +1161,31 @@ def ai_advice_page():
 def ai_advice():
 
     """
-    AI 風險建議 API
+    AI Advisor
 
-    資料關係：
+    流程：
 
-    companies
-        ↓
-    assets.company_id
-        ↓
-    assets.id
-        ↓
-    risk_assessments.asset_id
-        ↓
-    RAG
-        ↓
-    Gemini
+    risk_assessment.html
+            ↓
+    目前畫面的評鑑資料
+            ↓
+    POST /api/ai-advice
+            ↓
+    驗證資產
+            ↓
+    建立 RAG Query
+            ↓
+    generate_advice()
+            ↓
+    Gemini + CVE + ISO 27002
+            ↓
+    回傳 AI 建議
+
+    注意：
+    這裡不要求 risk_assessments
+    已經存在資料庫。
+
+    AI 可以直接使用前端目前評鑑資料。
     """
 
     # ========================================================
@@ -1184,11 +1193,13 @@ def ai_advice():
     # ========================================================
 
     if not session.get("logged_in"):
+
         return jsonify({
             "success": False,
             "error": "Unauthorized",
             "code": "UNAUTHORIZED"
         }), 401
+
 
     # ========================================================
     # 2. 公司驗證
@@ -1197,16 +1208,62 @@ def ai_advice():
     company_id = _session_company_id()
 
     if company_id is None:
+
         return _company_context_required_response(
             api_request=True
         )
 
+
+    # ========================================================
+    # 3. 取得 JSON
+    # ========================================================
+
+    data = request.get_json(
+        silent=True
+    )
+
+
+    if not isinstance(data, dict):
+
+        return jsonify({
+            "success": False,
+            "error": "未收到有效的 JSON 資料",
+            "code": "INVALID_JSON"
+        }), 400
+
+
+    logger.info(
+        "AI Advisor 收到前端資料：%s",
+        data
+    )
+
+
+    # ========================================================
+    # 4. 取得 Asset ID
+    # ========================================================
+
+    asset_id = data.get(
+        "asset_id"
+    )
+
+
+    if not asset_id:
+
+        return jsonify({
+            "success": False,
+            "error": "缺少資產 ID",
+            "code": "MISSING_ASSET_ID"
+        }), 400
+
+
+    # ========================================================
+    # 5. 確認資產屬於目前公司
+    # ========================================================
+
     try:
+
         supabase = get_supabase_client()
 
-        # ====================================================
-        # 3. 找目前公司的所有資產
-        # ====================================================
 
         asset_response = (
             supabase
@@ -1217,253 +1274,438 @@ def ai_advice():
                 company_id,
                 asset_name,
                 description,
+                asset_type,
                 confidentiality,
                 integrity,
                 availability,
                 legality,
-                asset_type,
                 asset_value
                 """
+            )
+            .eq(
+                "id",
+                asset_id
             )
             .eq(
                 "company_id",
                 company_id
             )
-            .execute()
-        )
-
-        assets = (
-            asset_response.data
-            or []
-        )
-
-        logger.info(
-            "公司 %s 找到 %s 個資產",
-            company_id,
-            len(assets)
-        )
-
-        if not assets:
-            return jsonify({
-                "success": False,
-                "error": "目前公司沒有資產",
-                "code": "NO_ASSET"
-            }), 400
-
-        # ====================================================
-        # 4. 建立 asset map
-        # ====================================================
-
-        asset_map = {
-            asset["id"]: asset
-            for asset in assets
-            if asset.get("id") is not None
-        }
-
-        asset_ids = list(
-            asset_map.keys()
-        )
-
-        if not asset_ids:
-            return jsonify({
-                "success": False,
-                "error": "目前公司沒有有效的資產 ID",
-                "code": "NO_VALID_ASSET"
-            }), 400
-
-        # ====================================================
-        # 5. 查 risk_assessments
-        #
-        # 重要：
-        # 不可以寫：
-        #
-        # .eq("company_id", company_id)
-        #
-        # 因為 risk_assessments 沒有 company_id
-        # ====================================================
-
-        assessment_response = (
-            supabase
-            .table("risk_assessments")
-            .select("*")
-            .in_(
-                "asset_id",
-                asset_ids
-            )
-            .order(
-                "created_at",
-                desc=True
-            )
             .limit(1)
             .execute()
         )
 
-        assessments = (
-            assessment_response.data
+
+        db_assets = (
+            asset_response.data
             or []
         )
 
-        logger.info(
-            "公司 %s 找到 %s 筆風險評鑑",
-            company_id,
-            len(assessments)
-        )
 
-        # ====================================================
-        # 6. 沒有風險評鑑
-        # ====================================================
+        if not db_assets:
 
-        if not assessments:
             return jsonify({
                 "success": False,
-                "error": "尚未完成風險評鑑，請先進行風險評鑑並儲存結果",
-                "code": "NO_ASSESSMENT"
-            }), 400
-
-        # ====================================================
-        # 7. 最新評鑑
-        # ====================================================
-
-        assessment = assessments[0]
-
-        asset_id = assessment.get(
-            "asset_id"
-        )
-
-        asset = asset_map.get(
-            asset_id,
-            {}
-        )
-
-        if not asset:
-            return jsonify({
-                "success": False,
-                "error": "風險評鑑所對應的資產不存在",
+                "error": "找不到此資產，或資產不屬於目前公司",
                 "code": "ASSET_NOT_FOUND"
-            }), 400
+            }), 404
 
-        # ====================================================
-        # 8. 資產資料
-        # ====================================================
 
-        asset_name = asset.get(
-            "asset_name",
-            "未知資產"
+        db_asset = db_assets[0]
+
+
+    except Exception as e:
+
+        logger.exception(
+            "確認資產失敗：%s",
+            e
         )
 
-        description = asset.get(
-            "description",
-            ""
-        )
 
-        confidentiality = asset.get(
+        return jsonify({
+            "success": False,
+            "error": "無法確認資產資料",
+            "code": "ASSET_VERIFY_FAILED"
+        }), 500
+
+
+    # ========================================================
+    # 6. 使用前端目前評鑑資料
+    #
+    # 如果前端有傳資料：
+    # 優先使用前端資料。
+    #
+    # 如果沒有：
+    # 使用 assets DB 資料。
+    # ========================================================
+
+    asset_name = (
+        data.get("asset_name")
+        or db_asset.get("asset_name")
+        or "未知資產"
+    )
+
+
+    description = (
+        data.get("description")
+        or db_asset.get("description")
+        or ""
+    )
+
+
+    asset_type = (
+        data.get("asset_type")
+        or db_asset.get("asset_type")
+        or ""
+    )
+
+
+    threat_description = (
+        data.get("threat_description")
+        or ""
+    )
+
+
+    confidentiality = data.get(
+        "confidentiality",
+        db_asset.get(
             "confidentiality",
             0
         )
+    )
 
-        integrity = asset.get(
+
+    integrity = data.get(
+        "integrity",
+        db_asset.get(
             "integrity",
             0
         )
+    )
 
-        availability = asset.get(
+
+    availability = data.get(
+        "availability",
+        db_asset.get(
             "availability",
             0
         )
+    )
 
-        legality = asset.get(
+
+    legality = data.get(
+        "legality",
+        db_asset.get(
             "legality",
             0
         )
+    )
 
-        # ====================================================
-        # 9. 建立 RAG 查詢內容
-        # ====================================================
 
-        asset_info = f"""
+    cvss_score = data.get(
+        "cvss_score",
+        data.get(
+            "cvss",
+            0
+        )
+    )
+
+
+    likelihood_score = data.get(
+        "likelihood_score",
+        0
+    )
+
+
+    impact_score = data.get(
+        "impact_score",
+        0
+    )
+
+
+    risk_score = data.get(
+        "risk_score",
+        0
+    )
+
+
+    risk_level = data.get(
+        "risk_level",
+        ""
+    )
+
+
+    # ========================================================
+    # 7. 數值轉換
+    # ========================================================
+
+    try:
+
+        confidentiality = float(
+            confidentiality or 0
+        )
+
+        integrity = float(
+            integrity or 0
+        )
+
+        availability = float(
+            availability or 0
+        )
+
+        legality = float(
+            legality or 0
+        )
+
+        cvss_score = float(
+            cvss_score or 0
+        )
+
+        likelihood_score = float(
+            likelihood_score or 0
+        )
+
+        impact_score = float(
+            impact_score or 0
+        )
+
+        risk_score = float(
+            risk_score or 0
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return jsonify({
+            "success": False,
+            "error": "風險評鑑數值格式錯誤",
+            "code": "INVALID_RISK_DATA"
+        }), 400
+
+
+    # ========================================================
+    # 8. 建立 RAG Query
+    # ========================================================
+
+    asset_info = f"""
+你是一名資安風險評鑑 AI 顧問。
+
+請針對以下資產進行資安風險分析。
+
+==================================================
+【資產資訊】
+==================================================
+
 資產名稱：
 {asset_name}
 
 資產類型：
-{asset.get("asset_type", "")}
+{asset_type}
 
 資產描述：
 {description}
 
-威脅與弱點描述：
-{assessment.get("threat_description", "")}
 
-CIA 評估：
+==================================================
+【威脅與弱點】
+==================================================
 
-機密性(C)：
+{threat_description}
+
+
+==================================================
+【CIA + 適法性評估】
+==================================================
+
+機密性 (C)：
 {confidentiality}
 
-完整性(I)：
+完整性 (I)：
 {integrity}
 
-可用性(A)：
+可用性 (A)：
 {availability}
 
-適法性(L)：
+適法性 (L)：
 {legality}
 
-CVSS：
-{assessment.get("cvss_score", 0)}
 
-發生機率：
-{assessment.get("likelihood_score", 0)}
+==================================================
+【弱點嚴重度】
+==================================================
+
+CVSS：
+{cvss_score}
+
+
+==================================================
+【發生機率】
+==================================================
+
+Likelihood：
+{likelihood_score}
+
+
+==================================================
+【風險計算結果】
+==================================================
 
 Impact Score：
-{assessment.get("impact_score", 0)}
+{impact_score}
 
 Risk Score：
-{assessment.get("risk_score", 0)}
+{risk_score}
 
 Risk Level：
-{assessment.get("risk_level", "")}
+{risk_level}
 
-請分析此資產可能存在的資安風險，
-並參考相關 CVE 與 ISO 27002 控制措施，
-提供具體、可執行的改善建議。
 
-請使用繁體中文回答。
+==================================================
+【AI 分析要求】
+==================================================
+
+請完成以下工作：
+
+1. 分析此資產目前最主要的資安風險。
+2. 說明可能造成的影響。
+3. 如果有相關 CVE，請參考 RAG 檢索到的 CVE 資訊。
+4. 參考 ISO 27002 控制措施。
+5. 提供具體、可執行的改善建議。
+6. 建議依照優先順序排列。
+7. 不要只提供一般性的資安建議。
+8. 建議要與目前資產與風險狀況相關。
+9. 使用繁體中文回答。
+
+請使用以下格式：
+
+【風險分析】
+
+說明目前最主要的資安風險。
+
+
+【可能影響】
+
+說明這項風險可能造成的影響。
+
+
+【相關漏洞 / CVE】
+
+如果 RAG 找到相關 CVE，
+請列出相關漏洞與簡要說明。
+
+如果沒有找到明確相關 CVE，
+請說明沒有找到明確相關 CVE。
+
+
+【ISO 27002 控制措施】
+
+說明適合此風險的 ISO 27002 控制措施。
+
+
+【改善建議】
+
+1. 第一項改善措施
+2. 第二項改善措施
+3. 第三項改善措施
+
+
+【優先處理建議】
+
+說明目前最應該優先處理的事項，
+並解釋原因。
 """
 
-        logger.info(
-            "開始產生 AI 建議：%s",
-            asset_name
-        )
 
-        # ====================================================
-        # 10. 呼叫 RAG + Gemini
-        # ====================================================
+    logger.info(
+        "開始產生 AI 建議：%s",
+        asset_name
+    )
+
+
+    # ========================================================
+    # 9. RAG + Gemini
+    # ========================================================
+
+    try:
 
         advice = generate_advice(
             asset_info
         )
 
-        # ====================================================
-        # 11. 回傳 AI 建議
-        # ====================================================
-
-        return jsonify({
-            "success": True,
-            "asset_name": asset_name,
-            "advice": advice
-        }), 200
 
     except Exception as e:
+
         logger.exception(
-            "AI Advisor failed: %s",
+            "RAG / Gemini 產生建議失敗：%s",
             e
         )
+
 
         return jsonify({
             "success": False,
             "error": str(e),
-            "code": "AI_ADVISOR_FAILED"
+            "code": "AI_GENERATION_FAILED"
         }), 503
 
+
+    # ========================================================
+    # 10. 回傳 AI 結果
+    # ========================================================
+
+    return jsonify({
+
+        "success": True,
+
+        "asset_id":
+            asset_id,
+
+        "asset_name":
+            asset_name,
+
+        "advice":
+            advice,
+
+        "description":
+            description,
+
+        "asset_type":
+            asset_type,
+
+        "threat_description":
+            threat_description,
+
+        "risk_data": {
+
+            "confidentiality":
+                confidentiality,
+
+            "integrity":
+                integrity,
+
+            "availability":
+                availability,
+
+            "legality":
+                legality,
+
+            "cvss_score":
+                cvss_score,
+
+            "likelihood_score":
+                likelihood_score,
+
+            "impact_score":
+                impact_score,
+
+            "risk_score":
+                risk_score,
+
+            "risk_level":
+                risk_level
+        }
+
+    }), 200
 
 # ============================================================
 # 報表匯出
