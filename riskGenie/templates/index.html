@@ -1,66 +1,14 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RiskGenie 資安管理系統</title>
+{% extends "base.html" %}
+{% set active_page = "home" %}
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/style.css') }}">
+{% block title %}RiskGenie 資安管理系統{% endblock %}
 
+{% block page_styles %}
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/index.css') }}">
-</head>
+{% endblock %}
 
-<body>
-
-<div class="sidebar">
-
-    <div class="sidebar-title">
-        RiskGenie
-    </div>
-
-    <a href="{{ url_for('home') }}">
-        <button class="menu-btn active">首 頁</button>
-    </a>
-
-    <a href="{{ url_for('asset_summary') }}">
-        <button class="menu-btn">資產總表</button>
-    </a>
-
-    <a href="{{ url_for('risk.risk_assessment_page') }}">
-        <button class="menu-btn">風險評鑑</button>
-    </a>
-
-    <a href="{{ url_for('risk.weight_setting_page') }}">
-        <button class="menu-btn">權重設定</button>
-    </a>
-
-    <a href="{{ url_for('risk.ai_advice_page') }}">
-    <button class="menu-btn">AI建議</button>
-    </a>
-    <button class="menu-btn">建議報表</button>
-    <button class="menu-btn">帳號管理</button>
-
-    <div class="menu-footer">
-
-        <div class="session-user">
-            <strong>{{ session.get("username","使用者") }}</strong><br>
-            {{ session.get("role_name","") }}
-        </div>
-
-        <form action="{{ url_for('logout') }}" method="post">
-            <button class="menu-btn logout-btn" type="submit">
-                登出
-            </button>
-        </form>
-
-    </div>
-
-</div>
-
-<div class="main-content">
-
+{% block main_content %}
     <div class="content-wrapper">
 
         <div class="upload-box">
@@ -201,9 +149,4 @@
         </div>
 
     </div>
-
-</div>
-
-</body>
-
-</html>
+{% endblock %}
