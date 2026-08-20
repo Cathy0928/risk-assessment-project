@@ -1,23 +1,14 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+{% extends "base.html" %}
+{% set active_page = "asset_summary" %}
 
-<head>
+{% block title %}RiskGenie｜資產缺漏檢查{% endblock %}
 
-    <meta charset="UTF-8">
-
-    <title>資產缺漏檢查</title>
-
-
-    <!-- 使用資產總表 CSS -->
+{% block page_styles %}
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/asset_summary.css') }}">
+{% endblock %}
 
-</head>
-
-
-<body>
-
-
+{% block main_content %}
 <div class="summary-card">
 
 
@@ -110,7 +101,4 @@ class="operation-btn edit-btn">
 
 </div>
 
-
-</body>
-
-</html>
+{% endblock %}

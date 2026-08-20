@@ -1,100 +1,73 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>權重設定</title>
+{% extends "base.html" %}
+{% set active_page = "weight_setting" %}
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block title %}RiskGenie｜權重設定{% endblock %}
+
+{% block page_styles %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/weight_setting.css') }}">
-</head>
-<body>
+{% endblock %}
 
-<div class="sidebar">
+{% block main_content %}
+    <div class="content-wrapper weight-page">
+        <section class="weight-settings-card" aria-labelledby="weight-page-title">
+            <header class="weight-page-header">
+                <h1 class="page-title" id="weight-page-title">權重設定</h1>
+                <p class="page-description">設定風險值計算方式與 C / I / A 權重。</p>
+            </header>
 
-    <div class="sidebar-title">
-        RiskGenie
-    </div>
+            <form id="weightForm" class="weight-form">
+                <section class="settings-section method-section" aria-labelledby="method-section-title">
+                    <div class="section-heading">
+                        <div>
+                            <h2 id="method-section-title">計算方法</h2>
+                            <p>選擇系統計算資產風險值時採用的方式。</p>
+                        </div>
+                    </div>
 
-    <a href="{{ url_for('home') }}">
-        <button class="menu-btn">首 頁</button>
-    </a>
+                    <div class="method-group">
+                        <div class="method-row">
+                            <button type="button" class="method-btn active" data-type="max">最大值</button>
+                        </div>
 
-    <a href="{{ url_for('asset_summary') }}">
-        <button class="menu-btn">資產總表</button>
-    </a>
+                        <div class="method-row">
+                            <button type="button" class="method-btn" data-type="sum">總合法</button>
+                        </div>
 
-    <a href="{{ url_for('risk.risk_assessment_page') }}">
-        <button class="menu-btn">風險評鑑</button>
-    </a>
-    <a href="{{ url_for('risk.weight_setting_page') }}">
-        <button class="menu-btn active">權重設定</button>
-    </a>
-    <button class="menu-btn">AI建議</button>
-    <button class="menu-btn">建議報表</button>
-    <button class="menu-btn">帳號管理</button>
+                        <div class="method-row">
+                            <button type="button" class="method-btn" data-type="avg">平均法</button>
+                        </div>
 
-    <div class="menu-footer">
+                        <div class="method-row weighted-row">
+                            <button type="button" class="method-btn" data-type="weighted_average">加權平均法</button>
+                        </div>
+                    </div>
+                </section>
 
-        <div class="session-user">
-            <strong>{{ session.get("username","使用者") }}</strong><br>
-            {{ session.get("role_name","") }}
-        </div>
-
-        <form action="{{ url_for('logout') }}" method="post">
-            <button class="menu-btn logout-btn" type="submit">
-                登出
-            </button>
-        </form>
-
-    </div>
-
-</div>
-
-<div class="main-content">
-
-    <div class="content-wrapper">
-
-        <h1 class="page-title">權重設定</h1>
-
-        <form id="weightForm" class="weight-form">
-
-            <div class="method-group">
-                
-                <div class="method-row">
-                    <button type="button" class="method-btn active" data-type="max">最大值</button>
-                </div>
-
-                <div class="method-row">
-                    <button type="button" class="method-btn" data-type="sum">總合法</button>
-                </div>
-
-                <div class="method-row">
-                    <button type="button" class="method-btn" data-type="avg">平均法</button>
-                </div>
-
-                <div class="method-row weighted-row">
-                    <button type="button" class="method-btn" data-type="weighted_average">加權平均法</button>
+                <section class="settings-section weight-input-section" aria-labelledby="weight-input-title">
+                    <div class="section-heading">
+                        <div>
+                            <h2 id="weight-input-title">C / I / A 權重</h2>
+                            <p>選擇「加權平均法」時，使用下列權重進行計算。</p>
+                        </div>
+                        <span class="weighted-method-badge">加權平均設定</span>
+                    </div>
 
                     <div class="inputs-inline" id="weightedInputs">
-                        <label>C : <input type="number" step="0.01" min="0" max="100" id="weight_c" name="weight_c" class="underline-input" value="0.3333"></label>
-                        <label>I : <input type="number" step="0.01" min="0" max="100" id="weight_i" name="weight_i" class="underline-input" value="0.3333"></label>
-                        <label>A : <input type="number" step="0.01" min="0" max="100" id="weight_a" name="weight_a" class="underline-input" value="0.3333"></label>
+                        <label><span class="weight-label">機密性（C）</span><input type="number" step="0.01" min="0" max="100" id="weight_c" name="weight_c" class="underline-input" value="0.3333"></label>
+                        <label><span class="weight-label">完整性（I）</span><input type="number" step="0.01" min="0" max="100" id="weight_i" name="weight_i" class="underline-input" value="0.3333"></label>
+                        <label><span class="weight-label">可用性（A）</span><input type="number" step="0.01" min="0" max="100" id="weight_a" name="weight_a" class="underline-input" value="0.3333"></label>
                     </div>
+                </section>
+
+                <div class="save-action">
+                    <button type="submit" class="save-btn">儲存</button>
                 </div>
-
-            </div>
-
-            <div class="save-action">
-                <button type="submit" class="save-btn">儲存</button>
-            </div>
-
-        </form>
-
+            </form>
+        </section>
     </div>
+{% endblock %}
 
-</div>
-
+{% block page_scripts %}
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     let currentFormula = "max";
@@ -177,6 +150,4 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 });
 </script>
-
-</body>
-</html>
+{% endblock %}

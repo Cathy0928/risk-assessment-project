@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}RiskGenie 資安管理系統{% endblock %}</title>
+    <title>{% block title %}RiskGenie｜首頁{% endblock %}</title>
 
     <link rel="stylesheet"
           href="{{ url_for('static', filename='css/style.css') }}">
@@ -11,7 +11,7 @@
     {% block page_styles %}{% endblock %}
 </head>
 
-<body>
+<body class="rg-app">
 
 <div class="sidebar">
 
@@ -23,24 +23,39 @@
         <button class="menu-btn{% if active_page == 'home' %} active{% endif %}">首 頁</button>
     </a>
 
+    <div class="sidebar-section-label">
+        <small>資產管理</small>
+    </div>
+
     <a href="{{ url_for('asset_summary') }}">
         <button class="menu-btn{% if active_page == 'asset_summary' %} active{% endif %}">資產總表</button>
     </a>
+
+    <div class="sidebar-section-label">
+        <small>風險管理</small>
+    </div>
 
     <a href="{{ url_for('risk.risk_assessment_page') }}">
         <button class="menu-btn{% if active_page == 'risk_assessment' %} active{% endif %}">風險評鑑</button>
     </a>
 
+    <a href="{{ url_for('risk.ai_advice_page') }}">
+        <button class="menu-btn{% if active_page == 'ai_advice' %} active{% endif %}">AI 建議</button>
+    </a>
+
+    <button class="menu-btn">風險報表</button>
+
+    <div class="sidebar-section-label">
+        <small>系統管理</small>
+    </div>
+
     <a href="{{ url_for('risk.weight_setting_page') }}">
         <button class="menu-btn{% if active_page == 'weight_setting' %} active{% endif %}">權重設定</button>
     </a>
 
-    <a href="{{ url_for('risk.ai_advice_page') }}">
-        <button class="menu-btn{% if active_page == 'ai_advice' %} active{% endif %}">AI建議</button>
+    <a href="{{ url_for('admin_users_page') }}">
+        <button class="menu-btn{% if active_page == 'admin_users' %} active{% endif %}">帳號管理</button>
     </a>
-
-    <button class="menu-btn">建議報表</button>
-    <button class="menu-btn">帳號管理</button>
 
     <div class="menu-footer">
 

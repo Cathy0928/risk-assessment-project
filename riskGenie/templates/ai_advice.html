@@ -1,27 +1,9 @@
-<!DOCTYPE html>
+{% extends "base.html" %}
+{% set active_page = "ai_advice" %}
 
-<html lang="zh-TW">
+{% block title %}RiskGenie｜AI 建議{% endblock %}
 
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>
-        RiskGenie - AI 建議
-    </title>
-
-
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', filename='css/style.css') }}"
-    >
-
-
+{% block page_styles %}
     <style>
 
         /* =========================================================
@@ -262,119 +244,9 @@
         }
 
     </style>
+{% endblock %}
 
-</head>
-
-
-<body>
-
-
-<!-- ============================================================
-     Sidebar
-============================================================ -->
-
-<div class="sidebar">
-
-    <div class="sidebar-title">
-        RiskGenie
-    </div>
-
-
-    <a href="{{ url_for('home') }}">
-
-        <button class="menu-btn">
-            首 頁
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('asset_summary') }}">
-
-        <button class="menu-btn">
-            資產總表
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('risk.risk_assessment_page') }}">
-
-        <button class="menu-btn">
-            風險評鑑
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('risk.weight_setting_page') }}">
-
-        <button class="menu-btn">
-            權重設定
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('risk.ai_advice_page') }}">
-
-        <button class="menu-btn active">
-            AI建議
-        </button>
-
-    </a>
-
-
-    <button class="menu-btn">
-        建議報表
-    </button>
-
-
-    <button class="menu-btn">
-        帳號管理
-    </button>
-
-
-    <div class="menu-footer">
-
-        <div class="session-user">
-
-            <strong>
-                {{ session.get("username","使用者") }}
-            </strong>
-
-            <br>
-
-            {{ session.get("role_name","") }}
-
-        </div>
-
-
-        <form
-            action="{{ url_for('logout') }}"
-            method="post"
-        >
-
-            <button
-                class="menu-btn logout-btn"
-                type="submit"
-            >
-                登出
-            </button>
-
-        </form>
-
-    </div>
-
-</div>
-
-
-<!-- ============================================================
-     Main
-============================================================ -->
-
-<div class="main-content">
-
+{% block main_content %}
     <div class="content-wrapper">
 
         <div class="ai-page-container">
@@ -710,10 +582,9 @@
         </div>
 
     </div>
+{% endblock %}
 
-</div>
-
-
+{% block page_scripts %}
 <script>
 
 /* ============================================================
@@ -997,8 +868,4 @@ function setText(
 }
 
 </script>
-
-
-</body>
-
-</html>
+{% endblock %}

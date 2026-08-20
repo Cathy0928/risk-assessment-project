@@ -1,37 +1,13 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>帳號管理 - RiskGenie</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% extends "base.html" %}
+{% set active_page = "admin_users" %}
+
+{% block title %}RiskGenie｜帳號管理{% endblock %}
+
+{% block page_styles %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_users.css') }}">
-    <script src="{{ url_for('static', filename='js/admin_users.js') }}" defer></script>
-</head>
-<body>
-    <aside class="sidebar">
-        <h1>RiskGenie</h1>
-        <nav aria-label="主要導覽">
-            <a href="{{ url_for('home') }}" class="menu-btn">首頁</a>
-            <button type="button" class="menu-btn">風險評鑑</button>
-            <a href="{{ url_for('asset_summary') }}" class="menu-btn">資產總覽</a>
-            <button type="button" class="menu-btn">弱點管理</button>
-            <button type="button" class="menu-btn">威脅管理</button>
-            <button type="button" class="menu-btn">風險計算</button>
-            <button type="button" class="menu-btn">風險報表</button>
-            <a href="{{ url_for('weight_setting') }}" class="menu-btn">權重設定</a>
-            <a href="{{ url_for('admin_users_page') }}" class="menu-btn active" aria-current="page">帳號管理</a>
-        </nav>
+{% endblock %}
 
-        <div class="session-user">
-            <span>目前登入：{{ session.get('username', '使用者') }}</span>
-            <form method="POST" action="{{ url_for('logout') }}">
-                <button type="submit" class="logout-btn">登出</button>
-            </form>
-        </div>
-    </aside>
-
-    <main class="main-content">
+{% block main_content %}
         <div class="admin-shell">
             <header class="page-header">
                 <div>
@@ -100,6 +76,8 @@
                 <p id="users-empty" class="empty-state" hidden>目前沒有使用者資料。</p>
             </section>
         </div>
-    </main>
-</body>
-</html>
+{% endblock %}
+
+{% block page_scripts %}
+    <script src="{{ url_for('static', filename='js/admin_users.js') }}" defer></script>
+{% endblock %}

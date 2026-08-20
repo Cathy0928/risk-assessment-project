@@ -1,99 +1,229 @@
 /* static/css/weight_setting.css */
 
-.page-title {
-    text-align: center;
-    font-size: 32px;
-    font-weight: 500;
-    margin-bottom: 50px;
-    color: #000000;
+.weight-page {
+    width: 100%;
+    max-width: 920px;
+    margin: 0 auto;
+}
+
+.weight-settings-card {
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+}
+
+.weight-page-header {
+    padding: var(--space-6) var(--space-8);
+    border-bottom: 1px solid var(--border);
+}
+
+.weight-settings-card .page-title {
+    margin: 0;
+    color: var(--text);
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: left;
+}
+
+.page-description {
+    margin: var(--space-2) 0 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
 }
 
 .weight-form {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    gap: var(--space-6);
     width: 100%;
+    padding: var(--space-6) var(--space-8);
+}
+
+.settings-section {
+    width: 100%;
+}
+
+.section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.section-heading h2 {
+    margin: 0;
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.section-heading p {
+    margin: var(--space-1) 0 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 .method-group {
-    display: flex;
-    flex-direction: column;
-    gap: 25px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
     width: 100%;
-    max-width: 650px;
 }
 
 .method-row {
-    display: flex;
-    align-items: center;
+    min-width: 0;
 }
 
 .method-btn {
-    width: 180px;
-    padding: 12px 0;
-    font-size: 22px;
-    background-color: #ffffff;
-    border: 1px solid #000000;
-    border-radius: 10px;
+    width: 100%;
+    min-height: 48px;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
     cursor: pointer;
-    text-align: center;
-    transition: all 0.2s ease;
-}
-
-.method-btn.active {
-    background-color: #d1d1d1;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: left;
+    transition: background-color .2s, border-color .2s, color .2s, box-shadow .2s;
 }
 
 .method-btn:hover {
-    background-color: #e2e2e2;
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary-hover);
 }
 
-.weighted-row {
-    display: flex;
-    align-items: center;
-    gap: 30px;
+.method-btn.active {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: #ffffff;
+    box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.method-btn:focus-visible,
+.underline-input:focus-visible,
+.save-btn:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.weight-input-section {
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-muted);
+    transition: background-color .2s, border-color .2s;
+}
+
+.weight-form:has(.method-btn[data-type="weighted_average"].active) .weight-input-section {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+}
+
+.weighted-method-badge {
+    flex-shrink: 0;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .inputs-inline {
-    display: flex;
-    align-items: center;
-    gap: 25px;
-    font-size: 22px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+    width: 100%;
 }
 
 .inputs-inline label {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+}
+
+.weight-label {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
 }
 
 .underline-input {
-    width: 60px;
-    border: none;
-    border-bottom: 1.5px solid #000000;
-    background: transparent;
+    width: 100%;
+    height: var(--control-height);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
     outline: none;
-    text-align: center;
-    font-size: 20px;
-    padding-bottom: 2px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 15px;
+    text-align: left;
+}
+
+.underline-input:focus {
+    border-color: var(--primary);
 }
 
 .save-action {
-    margin-top: 60px;
-    text-align: center;
+    display: flex;
+    justify-content: flex-end;
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
 }
 
 .save-btn {
-    width: 130px;
-    padding: 8px 0;
-    font-size: 20px;
-    background-color: #ffffff;
-    border: 1px solid #000000;
-    border-radius: 12px;
+    min-width: 120px;
+    height: var(--control-height);
+    padding: 0 var(--space-5);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-md);
+    background: var(--primary);
+    color: #ffffff;
     cursor: pointer;
-    transition: background-color 0.2s;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color .2s, border-color .2s;
 }
 
 .save-btn:hover {
-    background-color: #f0f0f0;
+    border-color: var(--primary-hover);
+    background: var(--primary-hover);
+}
+
+@media (max-width: 720px) {
+    .weight-page-header,
+    .weight-form {
+        padding-right: var(--space-5);
+        padding-left: var(--space-5);
+    }
+
+    .method-group,
+    .inputs-inline {
+        grid-template-columns: 1fr;
+    }
+
+    .section-heading {
+        flex-direction: column;
+    }
+
+    .save-btn {
+        width: 100%;
+    }
 }

@@ -1,41 +1,13 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+{% extends "base.html" %}
+{% set active_page = "asset_summary" %}
 
-<head>
-    <meta charset="UTF-8">
-    <title>編輯資產 - Genie 資安管理系統</title>
+{% block title %}RiskGenie｜編輯資產{% endblock %}
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block page_styles %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/asset_add.css') }}">
-</head>
+{% endblock %}
 
-<body>
-
-    <!-- 左側選單 -->
-    <div class="sidebar">
-        <div class="sidebar-title">👤 Genie</div>
-
-        <a href="/">
-            <button class="menu-btn">首頁</button>
-        </a>
-
-        <a href="/summary">
-            <button class="menu-btn">資產總表</button>
-        </a>
-
-        <button class="menu-btn">風險評鑑</button>
-        <button class="menu-btn">權重設定</button>
-        <button class="menu-btn">AI建議</button>
-        <button class="menu-btn">建議報表</button>
-        <button class="menu-btn">帳號管理</button>
-
-        <div class="menu-footer">
-            <button class="menu-btn">⚙️ 設定</button>
-        </div>
-    </div>
-
-    <!-- 右側內容 -->
-    <div class="main-content">
+{% block main_content %}
 
         <div class="form-card">
 
@@ -308,8 +280,4 @@
             </script>
         </div>
 
-    </div>
-
-</body>
-
-</html>
+{% endblock %}
