@@ -1,0 +1,174 @@
+/* ================= 全局重置 ================= */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background-color: #ffffff;
+    color: #000000;
+}
+
+/* ================= 左側邊欄 Sidebar ================= */
+.sidebar {
+    width: 230px;
+    background-color: #797979;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 30px 20px;
+    flex-shrink: 0;
+}
+
+.sidebar-title {
+    font-size: 32px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 35px;
+    letter-spacing: 1px;
+}
+
+.sidebar a {
+    text-decoration: none;
+    display: block;
+    width: 100%;
+}
+
+.menu-btn {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 19px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+    transition: all 0.2s ease;
+}
+
+.menu-btn:hover,
+.menu-btn.active {
+    background-color: #555555;
+}
+
+.menu-footer {
+    margin-top: auto;
+    padding-top: 15px;
+    border-top: 1px solid #999999;
+}
+
+.session-user {
+    color: #ffffff;
+    font-size: 18px;
+    margin-bottom: 15px;
+    padding-left: 5px;
+    line-height: 1.4;
+}
+
+.logout-btn {
+    background-color: transparent;
+    text-align: left;
+    padding-left: 5px;
+    margin-bottom: 0;
+    border-top: 1px solid #999999;
+    border-radius: 0;
+    padding-top: 15px;
+}
+
+.logout-btn:hover {
+    background-color: transparent;
+    color: #dddddd;
+}
+
+/* ================= 右側主內容區 ================= */
+.main-content {
+    flex-grow: 1;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #ffffff;
+}
+
+.content-wrapper {
+    width: 100%;
+    max-width: 850px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.page-title {
+    font-size: 32px;
+    font-weight: 500;
+    margin-bottom: 35px;
+    color: #000000;
+    letter-spacing: 2px;
+}
+
+/* 黑框容器與表格 */
+.table-card {
+    width: 100%;
+    border: 1px solid #000000;
+    padding: 30px 40px;
+    background-color: #ffffff;
+    min-height: 420px;
+}
+
+.result-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+}
+
+.result-table th {
+    font-size: 24px;
+    font-weight: 400;
+    padding-bottom: 25px;
+    color: #000000;
+    letter-spacing: 1px;
+}
+
+.result-table td {
+    font-size: 20px;
+    padding: 25px 15px;
+    color: #000000;
+    line-height: 1.5;
+    vertical-align: middle;
+}
+
+.result-table tbody tr {
+    border-bottom: 1px solid #797979;
+}
+
+.result-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+/* 下方確認按鈕 */
+.action-container {
+    margin-top: 35px;
+}
+
+.confirm-btn {
+    background-color: #ffffff;
+    border: 1px solid #000000;
+    border-radius: 20px;
+    padding: 8px 45px;
+    font-size: 20px;
+    color: #000000;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 2px;
+}
+
+.confirm-btn:hover {
+    background-color: #f0f0f0;
+}

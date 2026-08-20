@@ -13,8 +13,6 @@
 
 <body>
 
-<!-- ================= Sidebar ================= -->
-
 <div class="sidebar">
 
     <div class="sidebar-title">
@@ -29,11 +27,13 @@
         <button class="menu-btn active">資產總表</button>
     </a>
 
-    <a href="/assess">
+    <a href="{{ url_for('risk.risk_assessment_page') }}">
         <button class="menu-btn">風險評鑑</button>
     </a>
 
-    <button class="menu-btn">權重設定</button>
+    <a href="{{ url_for('risk.weight_setting_page') }}">
+        <button class="menu-btn">權重設定</button>
+    </a>
 
     <button class="menu-btn">AI建議</button>
 
@@ -65,15 +65,11 @@
 
 </div>
 
-<!-- ================= Main ================= -->
-
 <div class="main-content">
 
 <div class="summary-card">
 
 <h2>資產總表</h2>
-
-<!-- ================= 查詢 ================= -->
 
 <div class="search-box">
 
@@ -222,8 +218,6 @@ class="reset-btn">
 
 </div>
 
-<!-- ================= Table ================= -->
-
 <div class="table-container">
 
 <table class="asset-table">
@@ -348,10 +342,6 @@ style="text-align:center;">
 </table>
 
 </div>
-
-<div class="bottom-action">
-
-<a href="{{ url_for('asset_missing') }}">
 
 <div class="bottom-action">
 

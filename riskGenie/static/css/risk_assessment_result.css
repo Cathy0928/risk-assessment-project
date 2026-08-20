@@ -1,0 +1,322 @@
+/* ================= 全局重置 ================= */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background-color: #ffffff;
+    color: #000000;
+}
+
+/* ================= 左側邊欄 Sidebar ================= */
+.sidebar {
+    width: 230px;
+    background-color: #797979;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 30px 20px;
+    flex-shrink: 0;
+}
+
+.sidebar-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 35px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar a {
+    text-decoration: none;
+    display: block;
+    width: 100%;
+}
+
+.menu-btn {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 19px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+    transition: all 0.2s ease;
+}
+
+.menu-btn:hover,
+.menu-btn.active {
+    background-color: #555555;
+}
+
+.menu-footer {
+    margin-top: auto;
+    padding-top: 15px;
+}
+
+.setting-btn {
+    font-size: 20px;
+}
+
+/* ================= 右側主內容區 ================= */
+.main-content {
+    flex-grow: 1;
+    padding: 25px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #ffffff;
+}
+
+.page-title {
+    font-size: 34px;
+    font-weight: 500;
+    margin-bottom: 20px;
+    color: #000000;
+    letter-spacing: 2px;
+}
+
+/* ================= 三步驟橫向容器 ================= */
+.steps-container {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    width: 100%;
+    max-width: 1100px;
+}
+
+.step-column {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.step-title {
+    font-size: 22px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    color: #000000;
+}
+
+.step-card {
+    width: 100%;
+    border: 1.2px solid #000000;
+    border-radius: 18px;
+    padding: 22px 20px;
+    min-height: 520px;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ================= 步驟 1 ================= */
+.section-heading {
+    font-size: 20px;
+    margin-bottom: 12px;
+}
+
+.section-heading-with-icon {
+    font-size: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.icon-plus {
+    font-size: 22px;
+    cursor: pointer;
+    color: #000000;
+}
+
+.text-muted {
+    color: #797979;
+}
+
+.score-row {
+    display: flex;
+    align-items: center;
+    font-size: 19px;
+    margin-bottom: 6px;
+}
+
+.label-text {
+    width: 110px;
+    color: #000000;
+}
+
+.score-num {
+    width: 35px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.level-tag {
+    font-weight: 500;
+}
+
+.item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 17px;
+    margin-bottom: 4px;
+}
+
+.item-badge .sub-label {
+    font-size: 14px;
+    color: #555555;
+}
+
+.card-divider {
+    width: 100%;
+    height: 1px;
+    background-color: #b0b0b0;
+    margin: 12px 0;
+}
+
+/* ================= 步驟 2 ================= */
+.sub-desc {
+    font-size: 14px;
+    color: #333333;
+    margin-bottom: 8px;
+}
+
+.calc-main-row {
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.calc-row {
+    font-size: 19px;
+    margin-bottom: 6px;
+}
+
+.risk-score-highlight {
+    font-size: 22px;
+    font-weight: 500;
+    color: #000000;
+}
+
+.matrix-section {
+    margin-top: 5px;
+}
+
+.matrix-title {
+    font-size: 19px;
+    color: #000000;
+    margin-bottom: 8px;
+}
+
+.matrix-wrapper {
+    display: flex;
+    justify-content: center;
+}
+
+.risk-matrix {
+    border-collapse: collapse;
+    text-align: center;
+    font-size: 12px;
+}
+
+.risk-matrix td {
+    width: 30px;
+    height: 22px;
+    border: 1px solid #000000;
+    vertical-align: middle;
+}
+
+.matrix-axis-y {
+    writing-mode: vertical-lr;
+    width: 15px !important;
+    font-size: 11px;
+    border: 1px solid #000000;
+}
+
+.matrix-axis-x {
+    font-size: 11px;
+    border: 1px solid #000000;
+}
+
+.axis-label {
+    background-color: #ffffff;
+    font-size: 11px;
+}
+
+.bg-red {
+    background-color: #ff0000;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.bg-orange {
+    background-color: #ffaa00;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.bg-green {
+    background-color: #00b050;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+/* ================= 步驟 3 ================= */
+.ai-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    margin-top: 15px;
+}
+
+.ai-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    color: #000000;
+}
+
+.star-icon {
+    font-size: 20px;
+    color: #ffcc00;
+}
+
+/* ================= 共用顏色 ================= */
+.text-red { color: #ff0000; }
+.text-orange { color: #ff9900; }
+.font-bold { font-weight: bold; }
+
+/* ================= 底部確認按鈕 ================= */
+.action-footer {
+    margin-top: 25px;
+}
+
+.btn-confirm {
+    background-color: #ffffff;
+    border: 1.2px solid #000000;
+    border-radius: 20px;
+    padding: 8px 45px;
+    font-size: 20px;
+    color: #000000;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 2px;
+}
+
+.btn-confirm:hover {
+    background-color: #f0f0f0;
+}

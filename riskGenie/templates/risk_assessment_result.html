@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風險評鑑 - RiskGenie</title>
+
+    <!-- 引用獨立 CSS (加上版本號確保立即更新) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/risk_assessment_result.css') }}?v=4.0">
+</head>
+<body>
+
+<!-- 左側邊欄 Sidebar -->
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        <span class="user-avatar">👤</span> Genie
+    </div>
+
+    <a href="{{ url_for('home') }}"><button class="menu-btn">首 頁</button></a>
+    <a href="{{ url_for('asset_summary') }}"><button class="menu-btn">資產總表</button></a>
+    <a href="{{ url_for('risk_assessment') }}"><button class="menu-btn active">風險評鑑</button></a>
+    <a href="{{ url_for('weight_setting') }}"><button class="menu-btn">權重設定</button></a>
+    <a href="{{ url_for('ai_advice') }}"><button class="menu-btn">AI建議</button></a>
+    <a href="{{ url_for('risk_report') }}"><button class="menu-btn">風險報表</button></a>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+        <button class="menu-btn setting-btn">⚙️ 設定</button>
+    </div>
+
+</div>
+
+<!-- 右側主要內容區 -->
+<div class="main-content">
+
+    <h1 class="page-title">風險評鑑</h1>
+
+    <!-- 三步驟卡片容器 -->
+    <div class="steps-container">
+
+        <!-- ================= 步驟 1 ================= -->
+        <div class="step-column">
+            <div class="step-title">步驟1</div>
+            <div class="step-card">
+                
+                <div class="section-group">
+                    <div class="section-heading text-muted">CIA分數</div>
+                    <div class="score-row">
+                        <span class="label-text">機密性(C)</span>
+                        <span class="score-num text-orange">2</span>
+                        <span class="level-tag text-orange">中</span>
+                    </div>
+                    <div class="score-row">
+                        <span class="label-text">完整性(I)</span>
+                        <span class="score-num text-orange">2</span>
+                        <span class="level-tag text-orange">中</span>
+                    </div>
+                    <div class="score-row">
+                        <span class="label-text">可用性(A)</span>
+                        <span class="score-num text-red">3</span>
+                        <span class="level-tag text-red">高</span>
+                    </div>
+                </div>
+
+                <div class="card-divider"></div>
+
+                <div class="section-group">
+                    <div class="section-heading-with-icon">
+                        <span class="text-muted">威脅</span>
+                        <span class="icon-plus">⊕</span>
+                    </div>
+                    <div class="item-row">
+                        <span class="item-name">未授權存取</span>
+                        <div class="item-badge">
+                            <span class="sub-label">可能性：</span>
+                            <span class="text-red font-bold">高</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-divider"></div>
+
+                <div class="section-group">
+                    <div class="section-heading-with-icon">
+                        <span class="text-muted">弱點</span>
+                        <span class="icon-plus">⊕</span>
+                    </div>
+                    <div class="item-row">
+                        <span class="item-name">帳號權限不足</span>
+                        <div class="item-badge">
+                            <span class="sub-label">嚴重性：</span>
+                            <span class="text-red font-bold">高</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-divider"></div>
+
+            </div>
+        </div>
+
+        <!-- ================= 步驟 2 ================= -->
+        <div class="step-column">
+            <div class="step-title">步驟2</div>
+            <div class="step-card">
+                
+                <div class="section-heading text-muted">風險值計算</div>
+                <div class="sub-desc">影響程度(使用最大值法)</div>
+                <div class="calc-main-row">
+                    CIA最大值：<span class="text-red font-bold">3</span>
+                </div>
+
+                <div class="card-divider"></div>
+
+                <div class="calc-row">威脅可能性：<span class="text-red font-bold">3</span></div>
+                <div class="calc-row">弱點嚴重性：<span class="text-red font-bold">3</span></div>
+
+                <div class="card-divider"></div>
+
+                <div class="risk-score-highlight">
+                    風險分數：3*3=9
+                </div>
+
+                <div class="card-divider"></div>
+
+                <div class="matrix-section">
+                    <div class="matrix-title">風險矩陣</div>
+                    <div class="matrix-wrapper">
+                        <table class="risk-matrix">
+                            <tr>
+                                <td rowspan="3" class="matrix-axis-y">可能性</td>
+                                <td class="axis-label">高</td>
+                                <td class="bg-orange">3</td>
+                                <td class="bg-red">6</td>
+                                <td class="bg-red">9</td>
+                            </tr>
+                            <tr>
+                                <td class="axis-label">中</td>
+                                <td class="bg-green">2</td>
+                                <td class="bg-orange">4</td>
+                                <td class="bg-red">6</td>
+                            </tr>
+                            <tr>
+                                <td class="axis-label">低</td>
+                                <td class="bg-green">1</td>
+                                <td class="bg-green">2</td>
+                                <td class="bg-orange">3</td>
+                            </tr>
+                            <tr>
+                                <td></td>
+                                <td></td>
+                                <td class="axis-label">低</td>
+                                <td class="axis-label">中</td>
+                                <td class="axis-label">高</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2"></td>
+                                <td colspan="3" class="matrix-axis-x">嚴重性</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ================= 步驟 3 ================= -->
+        <div class="step-column">
+            <div class="step-title">步驟3</div>
+            <div class="step-card">
+                
+                <div class="section-heading text-muted">AI建議</div>
+
+                <ul class="ai-list">
+                    <li>
+                        <span class="star-icon">⭐</span>
+                        <span>強化帳號存取權限</span>
+                    </li>
+                    <li>
+                        <span class="star-icon">⭐</span>
+                        <span>啟用多因素驗證</span>
+                    </li>
+                    <li>
+                        <span class="star-icon">⭐</span>
+                        <span>加強資料存取紀錄與監控</span>
+                    </li>
+                    <li>
+                        <span class="star-icon">⭐</span>
+                        <span>資料加密與備份機制</span>
+                    </li>
+                </ul>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 底部確認按鈕 -->
+    <div class="action-footer">
+        <a href="{{ url_for('risk_assessment') }}">
+            <button type="button" class="btn-confirm">確 認</button>
+        </a>
+    </div>
+
+</div>
+
+</body>
+</html>

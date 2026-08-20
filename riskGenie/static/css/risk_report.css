@@ -1,0 +1,239 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, "Microsoft JhengHei", sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background-color: #ffffff;
+    color: #000000;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 230px;
+    background-color: #797979;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    padding: 30px 20px;
+    flex-shrink: 0;
+}
+
+.sidebar-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 35px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar a {
+    text-decoration: none;
+    display: block;
+    width: 100%;
+}
+
+.menu-btn {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 19px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+}
+
+.menu-btn:hover,
+.menu-btn.active {
+    background-color: #555555;
+}
+
+.menu-footer {
+    margin-top: auto;
+    padding-top: 15px;
+}
+
+.setting-btn {
+    font-size: 20px;
+}
+
+/* Main Content */
+.main-content {
+    flex-grow: 1;
+    padding: 30px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background-color: #ffffff;
+}
+
+.content-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.page-title {
+    font-size: 36px;
+    font-weight: 500;
+    letter-spacing: 2px;
+}
+
+.select-date {
+    border: 1px solid #000000;
+    border-radius: 18px;
+    padding: 6px 20px;
+    font-size: 18px;
+    background: #ffffff;
+    cursor: pointer;
+}
+
+/* 5 Metrics Cards */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 15px;
+}
+
+.metric-card {
+    border: 1px solid #000000;
+    border-radius: 12px;
+    padding: 15px 12px;
+    text-align: center;
+    background: #ffffff;
+}
+
+.metric-title {
+    font-size: 16px;
+    margin-bottom: 8px;
+    color: #333333;
+}
+
+.metric-value {
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.metric-unit {
+    font-size: 18px;
+    font-weight: normal;
+}
+
+.metric-sub {
+    font-size: 18px;
+    font-weight: normal;
+    color: #666666;
+}
+
+.text-black { color: #000000; }
+.text-red { color: #ff0000; }
+.text-orange { color: #ffaa00; }
+.text-green { color: #00b050; }
+
+/* 3 Charts Grid */
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.chart-card {
+    border: 1px solid #000000;
+    border-radius: 16px;
+    padding: 15px 20px;
+    background: #ffffff;
+    height: 280px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* 防止圖表溢出底框 */
+}
+
+.chart-title {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    color: #000000;
+}
+
+.chart-container {
+    flex-grow: 1;
+    position: relative;
+    width: 100%;
+    height: calc(100% - 35px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Bottom Grid */
+.bottom-grid {
+    display: flex;
+    gap: 15px;
+}
+
+.info-card {
+    border: 1px solid #000000;
+    border-radius: 12px;
+    padding: 20px;
+    background: #ffffff;
+    min-height: 250px;
+}
+
+.flex-1 { flex: 1; }
+.flex-2 { flex: 2; }
+
+.card-header-title {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 15px;
+}
+
+/* Table Style */
+.report-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+}
+
+.report-table th {
+    font-size: 15px;
+    font-weight: normal;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #cccccc;
+}
+
+.report-table td {
+    font-size: 15px;
+    padding: 12px 5px;
+}
+
+/* AI Summary List */
+.ai-summary-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.ai-summary-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.star-icon {
+    font-size: 20px;
+    color: #ffaa00;
+}

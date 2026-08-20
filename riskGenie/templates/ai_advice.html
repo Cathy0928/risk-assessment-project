@@ -1,53 +1,1004 @@
 <!DOCTYPE html>
+
 <html lang="zh-TW">
+
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 建議 - Genie</title>
-    <!-- FontAwesome 圖示庫 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        RiskGenie - AI 建議
+    </title>
+
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+
+    <style>
+
+        /* =========================================================
+           Main
+        ========================================================= */
+
+        .ai-page-container {
+
+            max-width: 1100px;
+
+            margin: 0 auto;
+        }
+
+
+        .ai-card {
+
+            background: white;
+
+            border-radius: 10px;
+
+            padding: 25px;
+
+            margin-bottom: 20px;
+
+            box-shadow:
+                0 2px 8px rgba(0,0,0,0.08);
+        }
+
+
+        .ai-card h2 {
+
+            margin-top: 0;
+
+            color: #333;
+
+            border-bottom:
+                2px solid #007bff;
+
+            padding-bottom: 10px;
+        }
+
+
+        .ai-card h3 {
+
+            color: #333;
+
+            margin-top: 25px;
+        }
+
+
+        /* =========================================================
+           Risk Table
+        ========================================================= */
+
+        .risk-table {
+
+            width: 100%;
+
+            border-collapse: collapse;
+        }
+
+
+        .risk-table th,
+        .risk-table td {
+
+            padding: 12px 15px;
+
+            border-bottom:
+                1px solid #e5e7eb;
+
+            text-align: left;
+        }
+
+
+        .risk-table th {
+
+            width: 200px;
+
+            background:
+                #f8fafc;
+
+            font-weight: 600;
+        }
+
+
+        /* =========================================================
+           Risk Level
+        ========================================================= */
+
+        .risk-level {
+
+            display: inline-block;
+
+            padding: 6px 14px;
+
+            border-radius: 5px;
+
+            background: #dc3545;
+
+            color: white;
+
+            font-weight: bold;
+        }
+
+
+        /* =========================================================
+           AI Advice
+        ========================================================= */
+
+        .ai-advice {
+
+            background:
+                #f8fafc;
+
+            border-left:
+                5px solid #007bff;
+
+            border-radius: 5px;
+
+            padding: 25px;
+
+            white-space: pre-wrap;
+
+            line-height: 1.9;
+
+            color: #333;
+
+            font-size: 16px;
+        }
+
+
+        /* =========================================================
+           Loading
+        ========================================================= */
+
+        #loadingMessage {
+
+            text-align: center;
+
+            padding: 60px;
+
+            color: #666;
+
+            font-size: 18px;
+        }
+
+
+        /* =========================================================
+           Empty
+        ========================================================= */
+
+        #emptyMessage {
+
+            display: none;
+
+            background: white;
+
+            padding: 40px;
+
+            text-align: center;
+
+            border-radius: 10px;
+
+            box-shadow:
+                0 2px 8px rgba(0,0,0,0.08);
+        }
+
+
+        /* =========================================================
+           Back Button
+        ========================================================= */
+
+        .back-button {
+
+            display: inline-block;
+
+            padding: 10px 20px;
+
+            background: #007bff;
+
+            color: white;
+
+            text-decoration: none;
+
+            border-radius: 5px;
+
+            font-weight: bold;
+
+            margin-bottom: 20px;
+        }
+
+
+        .back-button:hover {
+
+            background: #0056b3;
+        }
+
+
+        /* =========================================================
+           AI Header
+        ========================================================= */
+
+        .ai-header {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: center;
+
+            margin-bottom: 20px;
+        }
+
+
+        .ai-header h1 {
+
+            margin: 0;
+        }
+
+
+        @media (max-width: 700px) {
+
+            .risk-table th {
+
+                width: 130px;
+            }
+
+
+            .ai-header {
+
+                flex-direction: column;
+
+                align-items: flex-start;
+
+                gap: 10px;
+            }
+
+        }
+
+    </style>
+
 </head>
+
+
 <body>
 
-    <!-- 左側邊欄 Sidebar -->
-    <aside class="sidebar">
-        <div class="user-profile">
-            <i class="fa-solid fa-circle-user avatar"></i>
-            <span class="brand-name">Genie</span>
+
+<!-- ============================================================
+     Sidebar
+============================================================ -->
+
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        RiskGenie
+    </div>
+
+
+    <a href="{{ url_for('home') }}">
+
+        <button class="menu-btn">
+            首 頁
+        </button>
+
+    </a>
+
+
+    <a href="{{ url_for('asset_summary') }}">
+
+        <button class="menu-btn">
+            資產總表
+        </button>
+
+    </a>
+
+
+    <a href="{{ url_for('risk.risk_assessment_page') }}">
+
+        <button class="menu-btn">
+            風險評鑑
+        </button>
+
+    </a>
+
+
+    <a href="{{ url_for('risk.weight_setting_page') }}">
+
+        <button class="menu-btn">
+            權重設定
+        </button>
+
+    </a>
+
+
+    <a href="{{ url_for('risk.ai_advice_page') }}">
+
+        <button class="menu-btn active">
+            AI建議
+        </button>
+
+    </a>
+
+
+    <button class="menu-btn">
+        建議報表
+    </button>
+
+
+    <button class="menu-btn">
+        帳號管理
+    </button>
+
+
+    <div class="menu-footer">
+
+        <div class="session-user">
+
+            <strong>
+                {{ session.get("username","使用者") }}
+            </strong>
+
+            <br>
+
+            {{ session.get("role_name","") }}
+
         </div>
 
-        <nav class="menu">
-            <ul>
-                <li><a href="#">首 頁</a></li>
-                <li><a href="#">資產總表</a></li>
-                <li><a href="#">風險評鑑</a></li>
-                <li><a href="#">權重設定</a></li>
-                <li><a href="#" class="active">ＡＩ建議</a></li>
-                <li><a href="#">風險報表</a></li>
-                <li><a href="#" class="disabled">帳號管理</a></li>
-            </ul>
-        </nav>
 
-        <div class="sidebar-footer">
-            <a href="#" class="settings-btn"><i class="fa-solid fa-gear"></i> 設定</a>
+        <form
+            action="{{ url_for('logout') }}"
+            method="post"
+        >
+
+            <button
+                class="menu-btn logout-btn"
+                type="submit"
+            >
+                登出
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+
+<!-- ============================================================
+     Main
+============================================================ -->
+
+<div class="main-content">
+
+    <div class="content-wrapper">
+
+        <div class="ai-page-container">
+
+
+            <div class="ai-header">
+
+                <h1 class="page-title">
+
+                    🤖 AI 風險建議
+
+                </h1>
+
+
+                <a
+                    href="{{ url_for('risk.risk_assessment_page') }}"
+                    class="back-button"
+                >
+                    ← 返回風險評鑑
+                </a>
+
+            </div>
+
+
+            <!-- =================================================
+                 Loading
+            ================================================== -->
+
+            <div id="loadingMessage">
+
+                ⏳ 正在載入 AI 分析結果...
+
+            </div>
+
+
+            <!-- =================================================
+                 Empty
+            ================================================== -->
+
+            <div id="emptyMessage">
+
+                <h2>
+                    尚無 AI 建議
+                </h2>
+
+
+                <p>
+                    請先到「風險評鑑」頁面完成風險計算，
+                    再按下「AI建議」產生分析結果。
+                </p>
+
+
+                <a
+                    href="{{ url_for('risk.risk_assessment_page') }}"
+                    class="back-button"
+                >
+                    前往風險評鑑
+                </a>
+
+            </div>
+
+
+            <!-- =================================================
+                 AI Result
+            ================================================== -->
+
+            <div
+                id="aiResult"
+                style="display:none;"
+            >
+
+
+                <!-- =================================================
+                     Asset Information
+                ================================================== -->
+
+                <div class="ai-card">
+
+                    <h2>
+                        🖥️ 資產資訊
+                    </h2>
+
+
+                    <table class="risk-table">
+
+                        <tbody>
+
+                            <tr>
+
+                                <th>
+                                    資產名稱
+                                </th>
+
+                                <td id="assetName">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    資產類型
+                                </th>
+
+                                <td id="assetType">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    資產描述
+                                </th>
+
+                                <td id="assetDescription">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    威脅與弱點
+                                </th>
+
+                                <td id="threatDescription">
+                                    -
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+                <!-- =================================================
+                     Risk Information
+                ================================================== -->
+
+                <div class="ai-card">
+
+                    <h2>
+                        📊 風險評鑑結果
+                    </h2>
+
+
+                    <table class="risk-table">
+
+                        <tbody>
+
+                            <tr>
+
+                                <th>
+                                    機密性 C
+                                </th>
+
+                                <td id="confidentiality">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    完整性 I
+                                </th>
+
+                                <td id="integrity">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    可用性 A
+                                </th>
+
+                                <td id="availability">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    適法性 L
+                                </th>
+
+                                <td id="legality">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    CVSS
+                                </th>
+
+                                <td id="cvssScore">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    發生機率
+                                </th>
+
+                                <td id="likelihoodScore">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    Impact Score
+                                </th>
+
+                                <td id="impactScore">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    Risk Score
+                                </th>
+
+                                <td id="riskScore">
+                                    -
+                                </td>
+
+                            </tr>
+
+
+                            <tr>
+
+                                <th>
+                                    Risk Level
+                                </th>
+
+                                <td>
+
+                                    <span
+                                        id="riskLevel"
+                                        class="risk-level"
+                                    >
+                                        -
+                                    </span>
+
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+                <!-- =================================================
+                     AI Advice
+                ================================================== -->
+
+                <div class="ai-card">
+
+                    <h2>
+                        🛡️ AI 分析與改善建議
+                    </h2>
+
+
+                    <div
+                        id="aiAdviceText"
+                        class="ai-advice"
+                    >
+                    </div>
+
+                </div>
+
+
+                <!-- =================================================
+                     Generated Time
+                ================================================== -->
+
+                <div
+                    style="
+                        text-align:right;
+                        color:#777;
+                        margin-top:10px;
+                    "
+                >
+
+                    AI 建議產生時間：
+
+                    <span id="generatedTime">
+                        -
+                    </span>
+
+                </div>
+
+            </div>
+
         </div>
-    </aside>
 
-    <!-- 右側主要內容區 Main Content -->
-    <main class="main-content center-content">
-        <h1 class="page-title">AI建議</h1>
+    </div>
 
-        <!-- 中央按鈕容器 -->
-        <div class="card-options-container">
-            <a href="#" class="option-card">
-                <span>資產盤點</span>
-            </a>
-            <a href="#" class="option-card">
-                <span>風險評鑑</span>
-            </a>
-        </div>
-    </main>
+</div>
+
+
+<script>
+
+/* ============================================================
+   頁面初始化
+============================================================ */
+
+document.addEventListener(
+    'DOMContentLoaded',
+    function() {
+
+        loadAIAdvice();
+
+    }
+);
+
+
+/* ============================================================
+   載入 AI 結果
+============================================================ */
+
+function loadAIAdvice() {
+
+    const loading =
+        document.getElementById(
+            'loadingMessage'
+        );
+
+
+    const empty =
+        document.getElementById(
+            'emptyMessage'
+        );
+
+
+    const result =
+        document.getElementById(
+            'aiResult'
+        );
+
+
+    /* ========================================================
+       從 sessionStorage 取得資料
+    ======================================================== */
+
+    const savedData =
+        sessionStorage.getItem(
+            'riskGenieAIAdvice'
+        );
+
+
+    if (!savedData) {
+
+        loading.style.display =
+            'none';
+
+
+        empty.style.display =
+            'block';
+
+
+        return;
+    }
+
+
+    try {
+
+        const data =
+            JSON.parse(
+                savedData
+            );
+
+
+        console.log(
+            'AI 建議資料：',
+            data
+        );
+
+
+        /* ====================================================
+           顯示資產資料
+        ==================================================== */
+
+        setText(
+            'assetName',
+            data.asset_name
+        );
+
+
+        setText(
+            'assetType',
+            data.asset_type
+        );
+
+
+        setText(
+            'assetDescription',
+            data.description
+        );
+
+
+        setText(
+            'threatDescription',
+            data.threat_description
+        );
+
+
+        /* ====================================================
+           風險資料
+        ==================================================== */
+
+        const risk =
+            data.risk_data || {};
+
+
+        setText(
+            'confidentiality',
+            risk.confidentiality
+        );
+
+
+        setText(
+            'integrity',
+            risk.integrity
+        );
+
+
+        setText(
+            'availability',
+            risk.availability
+        );
+
+
+        setText(
+            'legality',
+            risk.legality
+        );
+
+
+        setText(
+            'cvssScore',
+            risk.cvss_score
+        );
+
+
+        setText(
+            'likelihoodScore',
+            risk.likelihood_score
+        );
+
+
+        setText(
+            'impactScore',
+            risk.impact_score
+        );
+
+
+        setText(
+            'riskScore',
+            risk.risk_score
+        );
+
+
+        setText(
+            'riskLevel',
+            risk.risk_level
+        );
+
+
+        /* ====================================================
+           AI 建議
+        ==================================================== */
+
+        const advice =
+            document.getElementById(
+                'aiAdviceText'
+            );
+
+
+        advice.innerText =
+            data.advice ||
+            'AI 未產生建議。';
+
+
+        /* ====================================================
+           時間
+        ==================================================== */
+
+        if (
+            data.generated_at
+        ) {
+
+            const date =
+                new Date(
+                    data.generated_at
+                );
+
+
+            document.getElementById(
+                'generatedTime'
+            ).innerText =
+                date.toLocaleString(
+                    'zh-TW'
+                );
+
+        }
+
+
+        /* ====================================================
+           顯示結果
+        ==================================================== */
+
+        loading.style.display =
+            'none';
+
+
+        empty.style.display =
+            'none';
+
+
+        result.style.display =
+            'block';
+
+
+    } catch (error) {
+
+        console.error(
+            '讀取 AI 建議失敗：',
+            error
+        );
+
+
+        loading.style.display =
+            'none';
+
+
+        empty.style.display =
+            'block';
+
+    }
+
+}
+
+
+/* ============================================================
+   設定文字
+============================================================ */
+
+function setText(
+    elementId,
+    value
+) {
+
+    const element =
+        document.getElementById(
+            elementId
+        );
+
+
+    if (!element) {
+
+        return;
+    }
+
+
+    if (
+        value === undefined ||
+        value === null ||
+        value === ''
+    ) {
+
+        element.innerText =
+            '-';
+
+        return;
+    }
+
+
+    element.innerText =
+        value;
+
+}
+
+</script>
+
 
 </body>
+
 </html>

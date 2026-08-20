@@ -28,14 +28,17 @@
         <button class="menu-btn">資產總表</button>
     </a>
 
-    <button class="menu-btn">風險評鑑</button>
+    <a href="{{ url_for('risk.risk_assessment_page') }}">
+        <button class="menu-btn">風險評鑑</button>
+    </a>
 
-    <!-- 💡 已更新：新增權重設定超連結 -->
-    <a href="{{ url_for('weight_setting') }}">
+    <a href="{{ url_for('risk.weight_setting_page') }}">
         <button class="menu-btn">權重設定</button>
     </a>
 
+    <a href="{{ url_for('risk.ai_advice_page') }}">
     <button class="menu-btn">AI建議</button>
+    </a>
     <button class="menu-btn">建議報表</button>
     <button class="menu-btn">帳號管理</button>
 

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>風險報表 - RiskGenie</title>
+
+    <!-- 引用獨立專屬 CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/risk_report.css') }}?v=2.0">
+    
+    <!-- 引入 Chart.js 及 DataLabels 外掛 (解決數值繪製在圓環內部問題) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+</head>
+<body>
+
+<!-- 左側邊欄 Sidebar -->
+<div class="sidebar">
+
+    <div class="sidebar-title">
+        <span class="user-avatar">👤</span> Genie
+    </div>
+
+    <a href="{{ url_for('home') }}"><button class="menu-btn">首 頁</button></a>
+    <a href="{{ url_for('asset_summary') }}"><button class="menu-btn">資產總表</button></a>
+    <a href="{{ url_for('risk_assessment') }}"><button class="menu-btn">風險評鑑</button></a>
+    <a href="{{ url_for('weight_setting') }}"><button class="menu-btn">權重設定</button></a>
+    <a href="{{ url_for('ai_advice') }}"><button class="menu-btn">AI建議</button></a>
+    <a href="{{ url_for('risk_report') }}"><button class="menu-btn active">風險報表</button></a>
+    <button class="menu-btn">帳號管理</button>
+
+    <div class="menu-footer">
+        <button class="menu-btn setting-btn">⚙️ 設定</button>
+    </div>
+
+</div>
+
+<!-- 右側主要內容區 -->
+<div class="main-content">
+
+    <div class="content-header">
+        <h1 class="page-title">風險報表</h1>
+        <div class="date-selector">
+            <select class="select-date">
+                <option value="2026-04">2026年 4月 ▼</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 上方 5 個關鍵指標卡片 -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-title">資產總數</div>
+            <div class="metric-value text-black">100 <span class="metric-unit">項</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">高風險資產</div>
+            <div class="metric-value text-red">14 <span class="metric-unit">項</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">中風險資產</div>
+            <div class="metric-value text-orange">30 <span class="metric-unit">項</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">低風險資產</div>
+            <div class="metric-value text-green">56 <span class="metric-unit">項</span></div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">平均風險分數</div>
+            <div class="metric-value text-black">40 <span class="metric-sub">/100</span></div>
+        </div>
+    </div>
+
+    <!-- 中間 3 個圖表區塊 -->
+    <div class="charts-grid">
+        
+        <!-- 風險等級分布 (甜甜圈圖) -->
+        <div class="chart-card">
+            <div class="chart-title">風險等級分布</div>
+            <div class="chart-container">
+                <canvas id="pieChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 各部門風險分布 (堆疊長條圖) -->
+        <div class="chart-card">
+            <div class="chart-title">各部門風險分布</div>
+            <div class="chart-container">
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 本月風險趨勢 (折線圖) -->
+        <div class="chart-card">
+            <div class="chart-title">本月風險趨勢</div>
+            <div class="chart-container">
+                <canvas id="lineChart"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 下方 2 個清單與摘要區塊 -->
+    <div class="bottom-grid">
+
+        <!-- 高風險資產清單表格 -->
+        <div class="info-card flex-2">
+            <div class="card-header-title">高風險資產清單</div>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>編號</th>
+                        <th>資產名稱</th>
+                        <th>部門</th>
+                        <th>風險分數</th>
+                        <th>風險等級</th>
+                        <th>建議處理方式</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>客戶資料伺服器</td>
+                        <td>資訊處</td>
+                        <td class="text-red">92</td>
+                        <td class="text-red">高</td>
+                        <td>強化存取控制及備份功能</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>內部資料伺服器</td>
+                        <td>資訊處</td>
+                        <td class="text-red">88</td>
+                        <td class="text-red">高</td>
+                        <td>停用不必要服務</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>財務系統主機</td>
+                        <td>財務處</td>
+                        <td class="text-red">82</td>
+                        <td class="text-red">高</td>
+                        <td>更新版本，限制管理員權限</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- AI改善建議摘要 -->
+        <div class="info-card flex-1">
+            <div class="card-header-title">AI改善建議摘要</div>
+            <ul class="ai-summary-list">
+                <li>
+                    <span class="star-icon">⭐</span>
+                    <span>優先處理高風險伺服器與資料庫，降低資料外洩風險</span>
+                </li>
+                <li>
+                    <span class="star-icon">⭐</span>
+                    <span>強化身分驗證與存取控制，落實最小權限原則</span>
+                </li>
+                <li>
+                    <span class="star-icon">⭐</span>
+                    <span>定期修補漏洞與更新系統，建立自動化掃描機制</span>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- 圖表初始化腳本 -->
+<script>
+    // 註冊 DataLabels 外掛
+    Chart.register(ChartDataLabels);
+
+    // 1. 風險等級分布 (Doughnut Chart)
+    const ctxPie = document.getElementById('pieChart').getContext('2d');
+    new Chart(ctxPie, {
+        type: 'doughnut',
+        data: {
+            labels: ['高風險', '中風險', '低風險'],
+            datasets: [{
+                data: [14, 30, 56],
+                backgroundColor: ['#ff0000', '#ffaa00', '#00e600'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false // 隱藏頂部圖例，避免擠壓圖表造成爆框
+                },
+                datalabels: {
+                    color: '#ffffff',
+                    font: {
+                        weight: 'bold',
+                        size: 13
+                    },
+                    formatter: (value) => value + '%' // 在圓環內刻印百分比數字
+                }
+            },
+            cutout: '55%' // 內圈孔徑大小
+        }
+    });
+
+    // 2. 各部門風險分布 (Stacked Bar)
+    const ctxBar = document.getElementById('barChart').getContext('2d');
+    new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+            labels: ['資訊處', '研發處', '財務處', '人資處', '行政處'],
+            datasets: [
+                { label: '高風險', data: [5, 2, 3, 1, 2], backgroundColor: '#ff0000' },
+                { label: '中風險', data: [12, 4, 5, 2, 8], backgroundColor: '#ffaa00' },
+                { label: '低風險', data: [15, 10, 10, 6, 15], backgroundColor: '#00e600' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                datalabels: { display: false } // 長條圖不顯示文字
+            },
+            scales: { x: { stacked: true }, y: { stacked: true, max: 50 } }
+        }
+    });
+
+    // 3. 本月風險趨勢 (Line Chart)
+    const ctxLine = document.getElementById('lineChart').getContext('2d');
+    new Chart(ctxLine, {
+        type: 'line',
+        data: {
+            labels: ['4/1', '4/5', '4/10', '4/15', '4/20', '4/25', '4/30'],
+            datasets: [{
+                label: '平均風險分數',
+                data: [60, 52, 42, 60, 68, 50, 45],
+                borderColor: '#000000',
+                backgroundColor: '#000000',
+                fill: false,
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                datalabels: { display: false }
+            }
+        }
+    });
+</script>
+
+</body>
+</html>

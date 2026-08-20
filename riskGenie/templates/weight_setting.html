@@ -24,7 +24,9 @@
         <button class="menu-btn">資產總表</button>
     </a>
 
-    <button class="menu-btn">風險評鑑</button>
+    <a href="{{ url_for('risk.risk_assessment_page') }}">
+        <button class="menu-btn">風險評鑑</button>
+    </a>
     <a href="{{ url_for('risk.weight_setting_page') }}">
         <button class="menu-btn active">權重設定</button>
     </a>
