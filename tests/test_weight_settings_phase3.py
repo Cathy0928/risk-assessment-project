@@ -375,7 +375,7 @@ def test_weight_save_returns_warning_success_when_fallback_succeeds(
 @pytest.mark.parametrize(
     ("method", "path"),
     [
-        ("post", "/ai-advice"),
+        ("post", "/api/ai-advice"),
         ("get", "/export"),
         ("post", "/api/risk-assessments/calculate"),
         ("get", "/api/risk-assessments"),
@@ -386,10 +386,18 @@ def test_company_context_required_for_ai_export_and_risk_apis(
 ):
     login_as(client, company_id=None)
     payload = {
+        "asset_id": 701,
         "asset_name": "Web Server",
-        "cia": "C:5 I:4 A:5",
-        "cvss": 9.8,
+        "company_id": 99,
+        "confidentiality": 5,
+        "integrity": 4,
+        "availability": 5,
+        "legality": 3,
+        "cvss_score": 9.8,
+        "likelihood_score": 5,
+        "impact_score": 9.8,
         "risk_score": 49,
+        "risk_level": "極高風險",
     }
 
     if method == "post":
@@ -410,23 +418,36 @@ def test_ai_missing_company_id_does_not_call_gemini(client, monkeypatch):
 
     monkeypatch.setattr(
         risk_routes,
-        "generate_risk_advice",
-        lambda _payload: pytest.fail("Gemini must not be called."),
+        "generate_advice",
+        lambda **_kwargs: pytest.fail("RAG/Gemini must not be called."),
     )
     monkeypatch.setattr(
         risk_routes,
         "is_gemini_configured",
         lambda: pytest.fail("Gemini config must not be checked."),
     )
+    monkeypatch.setattr(
+        risk_routes,
+        "get_supabase_client",
+        lambda: pytest.fail("Supabase must not be queried."),
+    )
     login_as(client, company_id=None)
 
     response = client.post(
-        "/ai-advice",
+        "/api/ai-advice",
         json={
+            "asset_id": 701,
             "asset_name": "Web Server",
-            "cia": "C:5 I:4 A:5",
-            "cvss": 9.8,
+            "company_id": 99,
+            "confidentiality": 5,
+            "integrity": 4,
+            "availability": 5,
+            "legality": 3,
+            "cvss_score": 9.8,
+            "likelihood_score": 5,
+            "impact_score": 9.8,
             "risk_score": 49,
+            "risk_level": "極高風險",
         },
     )
 

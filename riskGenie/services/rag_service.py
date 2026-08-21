@@ -22,14 +22,24 @@ supabase = create_client(
 # ==========================
 # Gemini
 # ==========================
-client = genai.Client(
-    api_key=os.getenv("GEMINI_API_KEY")
-)
+def is_gemini_configured():
+    """Return whether Gemini may be called without exposing key material."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    return bool(api_key and api_key.strip())
+
+
+def _get_gemini_client():
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or not api_key.strip():
+        raise RuntimeError("Gemini is not configured.")
+
+    return genai.Client(api_key=api_key)
 
 # ==========================
 # Embedding
 # ==========================
 def create_embedding(text):
+    client = _get_gemini_client()
     result = client.models.embed_content(
         model="gemini-embedding-001",
         contents=text,
@@ -456,7 +466,7 @@ CVSS、Likelihood 以及 RAG 檢索結果，
     # ========================================================
 
     try:
-
+        client = _get_gemini_client()
         response = client.models.generate_content(
             model="gemini-3.1-flash-lite",
             contents=prompt,
