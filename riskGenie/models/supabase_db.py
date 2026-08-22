@@ -61,6 +61,7 @@ def _ensure_asset_in_company(supabase: Any, asset_id: int, company_id: int) -> N
         .select("id")
         .eq("id", asset_id)
         .eq("company_id", company_id)
+        .eq("is_deleted", False)
         .execute()
     )
     if not _response_data(response):

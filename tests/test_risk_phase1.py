@@ -314,6 +314,7 @@ def test_save_assessment_uses_session_company(client, monkeypatch):
     )
     assert ("eq", "id", 701) in asset_query["filters"]
     assert ("eq", "company_id", 7) in asset_query["filters"]
+    assert ("eq", "is_deleted", False) in asset_query["filters"]
     assert assessment_insert["payload"]["company_id"] == 7
 
 
@@ -343,6 +344,31 @@ def test_save_assessment_rejects_unavailable_asset_without_insert(
         query["table"] == "risk_assessments"
         and query["operation"] == "insert"
         for query in fake.queries
+    )
+
+
+def test_save_assessment_rejects_soft_deleted_asset_without_insert_or_audit(
+    client,
+    monkeypatch,
+):
+    fake = install_fake_supabase(
+        monkeypatch,
+        assets=[asset_record(is_deleted=True)],
+    )
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/save",
+        json=valid_assessment_payload(),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "ASSET_NOT_FOUND"
+    assert fake.records["risk_assessments"] == []
+    assert fake.records["audit_logs"] == []
+    assert ("eq", "is_deleted", False) in fake.queries[0]["filters"]
+    assert not any(
+        query["operation"] == "insert" for query in fake.queries
     )
 
 

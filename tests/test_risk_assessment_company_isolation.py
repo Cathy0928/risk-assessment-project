@@ -193,7 +193,9 @@ def test_save_uses_server_company_and_does_not_mutate_caller(
         supabase_db,
         monkeypatch,
         {
-            "assets": [{"id": 7001, "company_id": 7}],
+            "assets": [
+                {"id": 7001, "company_id": 7, "is_deleted": False}
+            ],
             "risk_assessments": [],
         },
     )
@@ -213,6 +215,7 @@ def test_save_uses_server_company_and_does_not_mutate_caller(
     assert query_for(fake, "assets", "select")["filters"] == [
         ("eq", "id", 7001),
         ("eq", "company_id", 7),
+        ("eq", "is_deleted", False),
     ]
     assert query_for(fake, "risk_assessments", "insert")["payload"] == {
         "asset_id": 7001,
@@ -229,7 +232,9 @@ def test_save_removes_client_id_without_mutating_caller(
         supabase_db,
         monkeypatch,
         {
-            "assets": [{"id": 7001, "company_id": 7}],
+            "assets": [
+                {"id": 7001, "company_id": 7, "is_deleted": False}
+            ],
             "risk_assessments": [],
         },
     )
@@ -244,6 +249,41 @@ def test_save_removes_client_id_without_mutating_caller(
     insert_payload = query_for(fake, "risk_assessments", "insert")["payload"]
     assert "id" not in insert_payload
     assert assessment_data["id"] == 999
+
+
+def test_save_rejects_soft_deleted_asset_without_insert(
+    supabase_db,
+    monkeypatch,
+):
+    fake = install_fake(
+        supabase_db,
+        monkeypatch,
+        {
+            "assets": [
+                {"id": 7001, "company_id": 7, "is_deleted": True}
+            ],
+            "risk_assessments": [],
+        },
+    )
+
+    with pytest.raises(
+        supabase_db.RiskAssessmentAssetNotFoundError,
+        match="Asset not found",
+    ):
+        supabase_db.save_risk_assessment(
+            {"asset_id": 7001, "risk_score": 8.5},
+            company_id=7,
+        )
+
+    assert query_for(fake, "assets", "select")["filters"] == [
+        ("eq", "id", 7001),
+        ("eq", "company_id", 7),
+        ("eq", "is_deleted", False),
+    ]
+    assert fake.records["risk_assessments"] == []
+    assert not any(
+        query["operation"] == "insert" for query in fake.queries
+    )
 
 
 @pytest.mark.parametrize(
