@@ -23,6 +23,12 @@ from datetime import datetime
 # ============================================================
 
 try:
+    from ..models.supabase_db import (
+        InvalidRiskAssessmentError,
+        RiskAssessmentAssetNotFoundError,
+        get_all_risk_assessments as get_all_risk_assessment_records,
+        save_risk_assessment as save_risk_assessment_record,
+    )
     from .risk_service import (
         InvalidFormulaTypeError,
         RiskService,
@@ -30,11 +36,17 @@ try:
         normalize_formula_type,
     )
 
-    from .rag_service import generate_advice
+    from .rag_service import generate_advice, is_gemini_configured
     from .report import export_report
     from .supabase_client import get_supabase_client
 
 except ImportError:
+    from models.supabase_db import (
+        InvalidRiskAssessmentError,
+        RiskAssessmentAssetNotFoundError,
+        get_all_risk_assessments as get_all_risk_assessment_records,
+        save_risk_assessment as save_risk_assessment_record,
+    )
     from services.risk_service import (
         InvalidFormulaTypeError,
         RiskService,
@@ -42,7 +54,7 @@ except ImportError:
         normalize_formula_type,
     )
 
-    from services.rag_service import generate_advice
+    from services.rag_service import generate_advice, is_gemini_configured
     from services.report import export_report
     from services.supabase_client import get_supabase_client
 
@@ -549,7 +561,14 @@ def calculate_risk_api():
 
     data = request.get_json(
         silent=True
-    ) or {}
+    )
+
+    if not isinstance(data, dict):
+        return _json_error(
+            "未收到有效的 JSON 資料",
+            "INVALID_JSON",
+            400
+        )
 
     try:
         c = float(
@@ -742,19 +761,8 @@ def calculate_risk_api():
 # ============================================================
 # 儲存風險評鑑
 #
-# 注意：
-#
-# risk_assessments 沒有 company_id
-#
-# 關係：
-#
-# companies.id
-#       ↓
-# assets.company_id
-#
-# assets.id
-#       ↓
-# risk_assessments.asset_id
+# company_id 一律由 session 傳入 tenant-safe model helper。
+# model 會以 (asset_id, company_id) 驗證資產並寫入 company_id。
 # ============================================================
 
 @risk_bp.route(
@@ -779,7 +787,14 @@ def save_risk_assessment_api():
 
     data = request.get_json(
         silent=True
-    ) or {}
+    )
+
+    if not isinstance(data, dict):
+        return _json_error(
+            "請提供有效的 JSON 物件",
+            "INVALID_JSON",
+            400
+        )
 
     asset_id = data.get(
         "asset_id"
@@ -810,10 +825,21 @@ def save_risk_assessment_api():
         "risk_level"
     )
 
-    if not asset_id:
+    if asset_id is None or asset_id == "":
         return _json_error(
             "缺少資產 ID",
             "MISSING_ASSET_ID",
+            400
+        )
+
+    if (
+        not isinstance(asset_id, int)
+        or isinstance(asset_id, bool)
+        or asset_id <= 0
+    ):
+        return _json_error(
+            "資產 ID 格式錯誤",
+            "INVALID_ASSET_ID",
             400
         )
 
@@ -825,42 +851,9 @@ def save_risk_assessment_api():
         )
 
     try:
-        supabase = get_supabase_client()
-
         user_id = session.get(
             "user_id"
         )
-
-        # ====================================================
-        # 確認資產屬於目前公司
-        # ====================================================
-
-        asset_response = (
-            supabase
-            .table("assets")
-            .select("id, company_id, asset_name")
-            .eq(
-                "id",
-                asset_id
-            )
-            .eq(
-                "company_id",
-                company_id
-            )
-            .limit(1)
-            .execute()
-        )
-
-        if not asset_response.data:
-            return _json_error(
-                "找不到此資產，或資產不屬於目前公司",
-                "ASSET_NOT_FOUND",
-                404
-            )
-
-        # ====================================================
-        # risk_assessments 不寫 company_id
-        # ====================================================
 
         assessment_payload = {
             "asset_id": asset_id,
@@ -874,13 +867,9 @@ def save_risk_assessment_api():
             "created_at": datetime.now().isoformat()
         }
 
-        result = (
-            supabase
-            .table("risk_assessments")
-            .insert(
-                assessment_payload
-            )
-            .execute()
+        result = save_risk_assessment_record(
+            assessment_payload,
+            company_id=company_id
         )
 
         # ====================================================
@@ -888,6 +877,7 @@ def save_risk_assessment_api():
         # ====================================================
 
         try:
+            supabase = get_supabase_client()
             supabase.table(
                 "audit_logs"
             ).insert({
@@ -906,8 +896,22 @@ def save_risk_assessment_api():
 
         return jsonify({
             "success": True,
-            "data": result.data
+            "data": result
         }), 201
+
+    except RiskAssessmentAssetNotFoundError:
+        return _json_error(
+            "找不到此資產，或資產不屬於目前公司",
+            "ASSET_NOT_FOUND",
+            404
+        )
+
+    except InvalidRiskAssessmentError:
+        return _json_error(
+            "風險評鑑資料格式錯誤",
+            "INVALID_ASSESSMENT_DATA",
+            400
+        )
 
     except Exception as exc:
         logger.exception(
@@ -916,16 +920,14 @@ def save_risk_assessment_api():
         )
 
         return _json_error(
-            str(exc),
+            "儲存評鑑紀錄失敗",
             "SAVE_ASSESSMENT_FAILED",
-            500
+            503
         )
 
 
 # ============================================================
-# 歷史風險評鑑
-#
-# 不使用 risk_assessments.company_id
+# 歷史風險評鑑（直接依 risk_assessments.company_id 查詢）
 # ============================================================
 
 @risk_bp.route(
@@ -949,21 +951,43 @@ def get_historical_assessments_api():
         )
 
     try:
+        assessments = get_all_risk_assessment_records(
+            company_id=company_id
+        )
+
+        if not assessments:
+            return jsonify({
+                "success": True,
+                "assessments": []
+            }), 200
+
+        asset_ids = [
+            assessment.get("asset_id")
+            for assessment in assessments
+            if assessment.get("asset_id") is not None
+        ]
+        asset_ids = list(dict.fromkeys(asset_ids))
+
+        if not asset_ids:
+            return jsonify({
+                "success": True,
+                "assessments": []
+            }), 200
+
         supabase = get_supabase_client()
-
-        # ====================================================
-        # 先找目前公司的 assets
-        # ====================================================
-
         assets_response = (
             supabase
             .table("assets")
             .select(
-                "id, asset_name, asset_id_code"
+                "id, company_id, asset_name, asset_id_code"
             )
             .eq(
                 "company_id",
                 company_id
+            )
+            .in_(
+                "id",
+                asset_ids
             )
             .execute()
         )
@@ -973,66 +997,26 @@ def get_historical_assessments_api():
             or []
         )
 
-        if not assets:
-            return jsonify({
-                "success": True,
-                "assessments": []
-            }), 200
-
-        asset_ids = [
-            asset["id"]
-            for asset in assets
-            if asset.get("id") is not None
-        ]
-
-        if not asset_ids:
-            return jsonify({
-                "success": True,
-                "assessments": []
-            }), 200
-
-        # ====================================================
-        # 查 risk_assessments
-        # 只使用 asset_id
-        # ====================================================
-
-        response = (
-            supabase
-            .table("risk_assessments")
-            .select("*")
-            .in_(
-                "asset_id",
-                asset_ids
-            )
-            .order(
-                "created_at",
-                desc=True
-            )
-            .execute()
-        )
-
-        assessments = (
-            response.data
-            or []
-        )
-
-        # ====================================================
-        # 補上資產資料
-        # ====================================================
-
         asset_map = {
             asset["id"]: asset
             for asset in assets
+            if asset.get("id") is not None
+            and asset.get("company_id") == company_id
         }
 
+        scoped_assessments = []
         for assessment in assessments:
             asset = asset_map.get(
-                assessment.get(
-                    "asset_id"
-                ),
-                {}
+                assessment.get("asset_id")
             )
 
+            if (
+                asset is None
+                or assessment.get("company_id") != company_id
+            ):
+                continue
+
+            assessment = assessment.copy()
             assessment["assets"] = {
                 "asset_name": asset.get(
                     "asset_name",
@@ -1043,10 +1027,18 @@ def get_historical_assessments_api():
                     ""
                 )
             }
+            scoped_assessments.append(assessment)
+
+        scoped_assessments.sort(
+            key=lambda assessment: str(
+                assessment.get("created_at") or ""
+            ),
+            reverse=True
+        )
 
         return jsonify({
             "success": True,
-            "assessments": assessments
+            "assessments": scoped_assessments
         }), 200
 
     except Exception as e:
@@ -1056,9 +1048,9 @@ def get_historical_assessments_api():
         )
 
         return _json_error(
-            str(e),
+            "取得評鑑紀錄失敗",
             "FETCH_ASSESSMENTS_FAILED",
-            500
+            503
         )
 
 # ============================================================
@@ -1101,6 +1093,10 @@ def ai_advice_page():
                 "company_id",
                 company_id
             )
+            .eq(
+                "is_deleted",
+                False
+            )
             .execute()
         )
 
@@ -1127,6 +1123,10 @@ def ai_advice_page():
                     supabase
                     .table("risk_assessments")
                     .select("id")
+                    .eq(
+                        "company_id",
+                        company_id
+                    )
                     .in_(
                         "asset_id",
                         asset_ids
@@ -1243,12 +1243,27 @@ def ai_advice():
         "asset_id"
     )
 
-    if not asset_id:
+    if asset_id is None or asset_id == "":
 
         return jsonify({
             "success": False,
             "error": "缺少資產 ID",
             "code": "MISSING_ASSET_ID"
+        }), 400
+
+    try:
+        if isinstance(asset_id, bool):
+            raise ValueError
+
+        asset_id = int(asset_id)
+        if asset_id <= 0:
+            raise ValueError
+
+    except (TypeError, ValueError):
+        return jsonify({
+            "success": False,
+            "error": "資產 ID 格式錯誤",
+            "code": "INVALID_ASSET_ID"
         }), 400
 
 
@@ -1284,6 +1299,10 @@ def ai_advice():
             .eq(
                 "company_id",
                 company_id
+            )
+            .eq(
+                "is_deleted",
+                False
             )
             .limit(1)
             .execute()
@@ -1355,34 +1374,22 @@ def ai_advice():
 
     confidentiality = data.get(
         "confidentiality",
-        db_asset.get(
-            "confidentiality",
-            0
-        )
+        db_asset.get("confidentiality")
     )
 
     integrity = data.get(
         "integrity",
-        db_asset.get(
-            "integrity",
-            0
-        )
+        db_asset.get("integrity")
     )
 
     availability = data.get(
         "availability",
-        db_asset.get(
-            "availability",
-            0
-        )
+        db_asset.get("availability")
     )
 
     legality = data.get(
         "legality",
-        db_asset.get(
-            "legality",
-            0
-        )
+        db_asset.get("legality")
     )
 
 
@@ -1392,10 +1399,7 @@ def ai_advice():
 
     cvss_score = data.get(
         "cvss_score",
-        data.get(
-            "cvss",
-            0
-        )
+        data.get("cvss")
     )
 
 
@@ -1403,25 +1407,39 @@ def ai_advice():
     # 9. 風險評鑑結果
     # ========================================================
 
-    likelihood_score = data.get(
-        "likelihood_score",
-        0
+    likelihood_score = data.get("likelihood_score")
+
+    impact_score = data.get("impact_score")
+
+    risk_score = data.get("risk_score")
+
+    risk_level = data.get("risk_level")
+
+    required_assessment_values = (
+        confidentiality,
+        integrity,
+        availability,
+        legality,
+        cvss_score,
+        likelihood_score,
+        impact_score,
+        risk_score,
     )
 
-    impact_score = data.get(
-        "impact_score",
-        0
-    )
-
-    risk_score = data.get(
-        "risk_score",
-        0
-    )
-
-    risk_level = data.get(
-        "risk_level",
-        ""
-    )
+    if (
+        any(
+            value is None
+            or (isinstance(value, str) and not value.strip())
+            for value in required_assessment_values
+        )
+        or not isinstance(risk_level, str)
+        or not risk_level.strip()
+    ):
+        return _json_error(
+            "請先完成風險評鑑",
+            "RISK_ASSESSMENT_REQUIRED",
+            409
+        )
 
 
     # ========================================================
@@ -1461,6 +1479,23 @@ def ai_advice():
         risk_score = float(
             risk_score or 0
         )
+
+        numeric_assessment_values = (
+            confidentiality,
+            integrity,
+            availability,
+            legality,
+            cvss_score,
+            likelihood_score,
+            impact_score,
+            risk_score,
+        )
+
+        if not all(
+            math.isfinite(value)
+            for value in numeric_assessment_values
+        ):
+            raise ValueError
 
     except (
         TypeError,
@@ -1522,6 +1557,16 @@ def ai_advice():
             "code": "INVALID_CVSS"
         }), 400
 
+    if not is_gemini_configured():
+        logger.warning(
+            "AI Advisor request rejected because Gemini is not configured."
+        )
+        return _json_error(
+            "AI 服務尚未設定",
+            "GEMINI_NOT_CONFIGURED",
+            503
+        )
+
 
     # ========================================================
     # 12. AI Advisor
@@ -1581,7 +1626,7 @@ def ai_advice():
 
         return jsonify({
             "success": False,
-            "error": str(e),
+            "error": "AI 建議產生失敗，請稍後再試。",
             "code": "AI_GENERATION_FAILED"
         }), 503
 
@@ -1637,3 +1682,80 @@ def ai_advice():
         }
 
     }), 200
+
+
+# ============================================================
+# Company-scoped risk report export
+# ============================================================
+
+@risk_bp.route(
+    "/export",
+    methods=["GET"]
+)
+def export():
+    if not session.get("logged_in"):
+        return _json_error(
+            "Unauthorized",
+            "UNAUTHORIZED",
+            401
+        )
+
+    company_id = _session_company_id()
+    if company_id is None:
+        return _company_context_required_response(
+            api_request=True
+        )
+
+    try:
+        supabase = get_supabase_client()
+        asset_response = (
+            supabase
+            .table("assets")
+            .select(
+                "id, company_id, asset_id_code, asset_name, "
+                "asset_type, is_deleted"
+            )
+            .eq("company_id", company_id)
+            .eq("is_deleted", False)
+            .execute()
+        )
+        assets = asset_response.data or []
+        asset_ids = [
+            asset.get("id")
+            for asset in assets
+            if asset.get("id") is not None
+        ]
+
+        assessments = []
+        if asset_ids:
+            assessment_response = (
+                supabase
+                .table("risk_assessments")
+                .select(
+                    "id, company_id, asset_id, cvss_score, "
+                    "likelihood_score, impact_score, risk_score, "
+                    "risk_level, created_at"
+                )
+                .eq("company_id", company_id)
+                .in_("asset_id", asset_ids)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            assessments = assessment_response.data or []
+
+        return export_report(
+            assets=assets,
+            assessments=assessments,
+            company_id=company_id
+        )
+
+    except Exception as exc:
+        logger.exception(
+            "Risk report export failed: %s",
+            exc
+        )
+        return _json_error(
+            "風險報表匯出失敗",
+            "REPORT_EXPORT_FAILED",
+            503
+        )
