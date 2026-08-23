@@ -2,22 +2,18 @@ import os
 import logging
 
 from dotenv import load_dotenv
-from supabase import create_client
 from google import genai
+
+try:
+    from .supabase_client import get_supabase_client
+except ImportError:
+    from supabase_client import get_supabase_client
 
 # ==========================
 # Environment
 # ==========================
 load_dotenv()
 logger = logging.getLogger(__name__)
-
-# ==========================
-# Supabase
-# ==========================
-supabase = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_ANON_KEY")
-)
 
 # ==========================
 # Gemini
@@ -62,6 +58,7 @@ def search_cve(query, match_count=10, similarity_threshold=0.65):
         )
 
         # 2. Supabase Vector Search
+        supabase = get_supabase_client()
         response = supabase.rpc(
             "search_cve",
             {
