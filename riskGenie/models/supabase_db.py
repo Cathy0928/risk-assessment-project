@@ -207,3 +207,4 @@ def delete_risk_assessment(
     )
     data = _response_data(response)
     return data if data else []
+
