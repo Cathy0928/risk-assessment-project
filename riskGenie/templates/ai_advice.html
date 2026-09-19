@@ -683,7 +683,164 @@
                     </div>
 
                 </div>
+                <!-- =================================================
+                     RiskOps Lite
+                ================================================= -->
 
+                <div class="ai-card">
+
+                    <h2>
+                        ⚙️ RiskOps Lite 風險處理
+                    </h2>
+
+                    <p>
+                        請依據 AI 改善建議進行風險處理，並更新目前處理狀態。
+                    </p>
+
+
+                    <!-- AI 建議是否採用 -->
+
+                    <h3>
+                        是否採用 AI 改善建議
+                    </h3>
+
+                    <label>
+                        <input
+                            type="radio"
+                            name="adoptAiSuggestion"
+                            value="yes"
+                            checked
+                        >
+                        採用
+                    </label>
+
+                    <label style="margin-left:20px;">
+                        <input
+                            type="radio"
+                            name="adoptAiSuggestion"
+                            value="no"
+                        >
+                        不採用
+                    </label>
+
+
+                    <!-- 實際改善處理內容 -->
+
+                    <h3>
+                        實際改善處理內容
+                    </h3>
+
+                    <textarea
+                        id="treatmentNote"
+                        rows="5"
+                        style="
+                            width:100%;
+                            box-sizing:border-box;
+                            padding:12px;
+                            border:1px solid #ddd;
+                            border-radius:5px;
+                            resize:vertical;
+                        "
+                        placeholder="請填寫實際採取的改善或處理措施..."
+                    ></textarea>
+
+
+                    <!-- 預計完成日期 -->
+
+                    <h3>
+                        預計完成日期
+                    </h3>
+
+                    <input
+                        type="date"
+                        id="treatmentDueDate"
+                        style="
+                            padding:10px;
+                            border:1px solid #ddd;
+                            border-radius:5px;
+                        "
+                    >
+
+
+                    <!-- 改善證據 -->
+
+                    <h3>
+                        改善證據
+                    </h3>
+
+                    <input
+                        type="url"
+                        id="evidenceUrl"
+                        style="
+                            width:100%;
+                            box-sizing:border-box;
+                            padding:10px;
+                            border:1px solid #ddd;
+                            border-radius:5px;
+                        "
+                        placeholder="例如：https://example.com/evidence"
+                    >
+
+
+                    <!-- 風險狀態 -->
+
+                    <h3>
+                        風險狀態
+                    </h3>
+
+                    <select
+                        id="riskOpsStatus"
+                        style="
+                            padding:10px;
+                            border:1px solid #ddd;
+                            border-radius:5px;
+                            min-width:180px;
+                        "
+                    >
+                        <option value="待處理">
+                            待處理
+                        </option>
+
+                        <option value="處理中">
+                            處理中
+                        </option>
+
+                        <option value="待確認">
+                            待確認
+                        </option>
+
+                        <option value="已完成">
+                            已完成
+                        </option>
+                    </select>
+
+
+                    <!-- 儲存 -->
+
+                    <div style="margin-top:25px;">
+
+                        <button
+                            type="button"
+                            id="saveRiskOpsButton"
+                            class="back-button"
+                        >
+                            儲存 RiskOps
+                        </button>
+
+                    </div>
+
+
+                    <!-- 儲存結果 -->
+
+                    <div
+                        id="riskOpsMessage"
+                        style="
+                            margin-top:15px;
+                            font-weight:bold;
+                        "
+                    ></div>
+
+                </div>
 
                 <!-- =================================================
                      Generated Time
@@ -725,6 +882,7 @@ document.addEventListener(
     function() {
 
         loadAIAdvice();
+        loadRiskOps();
 
     }
 );
@@ -996,9 +1154,242 @@ function setText(
 
 }
 
+
+// =================================================
+// RiskOps Lite
+// 載入目前資料 + 儲存 RiskOps
+// =================================================
+
+async function loadRiskOps() {
+
+    const message = document.getElementById('riskOpsMessage');
+
+    try {
+
+        // 從 sessionStorage 取得目前的風險評鑑資料
+        const savedData = sessionStorage.getItem('riskGenieAIAdvice');
+
+        if (!savedData) {
+            message.textContent = '找不到目前的風險評鑑資料。';
+            return;
+        }
+
+        const data = JSON.parse(savedData);
+
+        // 取得 assessment_id
+        const assessmentId = data.assessment_id;
+
+        if (!assessmentId) {
+            message.textContent = '找不到風險評鑑 ID。';
+            return;
+        }
+
+        // 從後端取得目前 RiskOps 資料
+        const response = await fetch(
+            `/api/risk-assessments/${assessmentId}/riskops`
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || '無法取得 RiskOps 資料'
+            );
+        }
+
+        const assessment = result.assessment;
+
+        // 填入目前資料
+        document.getElementById('treatmentNote').value =
+            assessment.treatment_note || '';
+
+        document.getElementById('treatmentDueDate').value =
+            assessment.treatment_due_date || '';
+
+        document.getElementById('evidenceUrl').value =
+            assessment.evidence_url || '';
+
+        document.getElementById('riskOpsStatus').value =
+            assessment.status || '待處理';
+
+        message.textContent = '';
+
+    } catch (error) {
+
+        console.error('載入 RiskOps 失敗：', error);
+
+        message.textContent =
+            '載入 RiskOps 資料失敗：' + error.message;
+    }
+}
+
+
+// =================================================
+// 儲存 RiskOps Lite
+// =================================================
+
+async function saveRiskOps() {
+
+    const message = document.getElementById('riskOpsMessage');
+    const button = document.getElementById('saveRiskOpsButton');
+
+    try {
+
+        // 取得 sessionStorage 資料
+        const savedData = sessionStorage.getItem('riskGenieAIAdvice');
+
+        if (!savedData) {
+            message.textContent = '找不到目前的風險評鑑資料。';
+            return;
+        }
+
+        const data = JSON.parse(savedData);
+
+        // 取得 assessment_id
+        const assessmentId = data.assessment_id;
+
+        if (!assessmentId) {
+            message.textContent = '找不到風險評鑑 ID。';
+            return;
+        }
+
+        // 取得表單內容
+        const treatmentNote =
+            document.getElementById('treatmentNote').value.trim();
+
+        const treatmentDueDate =
+            document.getElementById('treatmentDueDate').value || null;
+
+        const evidenceUrl =
+            document.getElementById('evidenceUrl').value.trim();
+
+        const status =
+            document.getElementById('riskOpsStatus').value;
+
+        // 防止重複點擊
+        button.disabled = true;
+        button.textContent = '儲存中...';
+
+        // 傳送到 Flask API
+        const response = await fetch(
+            `/api/risk-assessments/${assessmentId}/riskops`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    treatment_note: treatmentNote,
+                    treatment_due_date: treatmentDueDate,
+                    evidence_url: evidenceUrl,
+                    status: status
+                })
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(
+                result.message || 'RiskOps 儲存失敗'
+            );
+        }
+
+        // 顯示成功訊息
+        message.textContent =
+            '✅ RiskOps Lite 儲存成功！目前狀態：' + result.status;
+
+        // 更新 sessionStorage 裡面的 assessment 狀態
+        data.status = result.status;
+        sessionStorage.setItem(
+            'riskGenieAIAdvice',
+            JSON.stringify(data)
+        );
+
+    } catch (error) {
+
+        console.error('儲存 RiskOps 失敗：', error);
+
+        message.textContent =
+            '❌ 儲存失敗：' + error.message;
+
+    } finally {
+
+        button.disabled = false;
+        button.textContent = '儲存 RiskOps';
+    }
+}
+
+
+// =================================================
+// 綁定按鈕
+// =================================================
+
+document
+    .getElementById('saveRiskOpsButton')
+    .addEventListener('click', saveRiskOps);
+
+
+// =================================================
+// 頁面載入時取得目前 RiskOps
+// =================================================
+// =================================================
+// AI 建議採用 / 不採用
+// =================================================
+
+document
+    .querySelectorAll('input[name="adoptAiSuggestion"]')
+    .forEach(function(radio) {
+
+        radio.addEventListener('change', function() {
+
+            const savedData =
+                sessionStorage.getItem('riskGenieAIAdvice');
+
+            if (!savedData) {
+                return;
+            }
+
+            try {
+
+                const data =
+                    JSON.parse(savedData);
+
+                const treatmentNote =
+                    document.getElementById('treatmentNote');
+
+                // 選擇「採用」
+                if (this.value === 'yes') {
+
+                    if (data.advice) {
+
+                        treatmentNote.value =
+                            data.advice;
+                    }
+
+                }
+
+                // 選擇「不採用」
+                else {
+
+                    treatmentNote.value = '';
+
+                }
+
+            } catch (error) {
+
+                console.error(
+                    '讀取 AI 建議失敗：',
+                    error
+                );
+
+            }
+
+        });
+
+    });
+
 </script>
-
-
 </body>
 
 </html>
