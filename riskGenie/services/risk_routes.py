@@ -456,7 +456,16 @@ def risk_assessment_page():
     return render_template(
         "risk_assessment.html"
     )
+# ============================================================
+# 風險報表
+# ============================================================
 
+@risk_bp.route("/risk-report")
+def risk_report():
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
+
+    return render_template("risk_report.html")
 
 # ============================================================
 # 取得目前公司的資產
@@ -863,6 +872,10 @@ def save_risk_assessment_api():
             "cvss_score": cvss_score,
             "risk_score": risk_score,
             "risk_level": risk_level,
+
+            # RiskOps Lite
+            "status": "待處理",
+
             "uploaded_by": user_id,
             "created_at": datetime.now().isoformat()
         }
@@ -925,7 +938,394 @@ def save_risk_assessment_api():
             503
         )
 
+# ============================================================
+# RiskOps Lite
+#
+# 不建立新的 Risk Treatment 資料表。
+# 直接延伸 risk_assessments。
+#
+# 使用欄位：
+#   treatment_note
+#   treatment_due_date
+#   evidence_url
+#   status
+# ============================================================
 
+RISKOPS_STATUSES = {
+    "待處理",
+    "處理中",
+    "待確認",
+    "已完成"
+}
+
+
+# ============================================================
+# 取得單筆 RiskOps 資料
+# ============================================================
+@risk_bp.route(
+    "/api/risk-assessments/<int:assessment_id>/riskops",
+    methods=["GET"]
+)
+def get_riskops_api(assessment_id):
+
+    if not session.get("logged_in"):
+        return _json_error(
+            "未登入系統",
+            "UNAUTHORIZED",
+            401
+        )
+
+    company_id = _session_company_id()
+
+    if company_id is None:
+        return _company_context_required_response(
+            api_request=True
+        )
+
+    if assessment_id <= 0:
+        return _json_error(
+            "風險評鑑 ID 格式錯誤",
+            "INVALID_ASSESSMENT_ID",
+            400
+        )
+
+    try:
+        supabase = get_supabase_client()
+
+        response = (
+            supabase
+            .table("risk_assessments")
+            .select(
+                """
+                id,
+                company_id,
+                asset_id,
+                ai_suggestion,
+                status,
+                treatment_note,
+                treatment_due_date,
+                evidence_url,
+                created_at
+                """
+            )
+            .eq(
+                "id",
+                assessment_id
+            )
+            .eq(
+                "company_id",
+                company_id
+            )
+            .limit(1)
+            .execute()
+        )
+
+        assessments = response.data or []
+
+        if not assessments:
+            return _json_error(
+                "找不到此風險評鑑紀錄",
+                "ASSESSMENT_NOT_FOUND",
+                404
+            )
+
+        # =================================================
+        # 取得該資產的負責人 asset_owner
+        # =================================================
+
+        assessment = assessments[0]
+
+        asset_id = assessment.get("asset_id")
+
+        asset_owner = ""
+
+        if asset_id:
+            asset_response = (
+                supabase
+                .table("assets")
+                .select("risk_owner")
+                .eq("id", asset_id)
+                .eq("company_id", company_id)
+                .limit(1)
+                .execute()
+            )
+
+            asset_data = asset_response.data or []
+
+            if asset_data:
+                asset_owner = (
+                    asset_data[0].get("risk_owner")
+                    or ""
+                )
+
+        # 將負責人放進回傳資料
+        assessment["asset_owner"] = asset_owner
+
+        return jsonify({
+            "success": True,
+            "assessment": assessment
+        }), 200
+
+    except Exception as exc:
+        logger.exception(
+            "取得 RiskOps 資料失敗：%s",
+            exc
+        )
+
+        return _json_error(
+            "取得 RiskOps 資料失敗",
+            "FETCH_RISKOPS_FAILED",
+            503
+        )
+
+
+
+# ============================================================
+# 儲存 RiskOps Lite
+# ============================================================
+
+@risk_bp.route(
+    "/api/risk-assessments/<int:assessment_id>/riskops",
+    methods=["POST"]
+)
+def save_riskops_api(assessment_id):
+
+    if not session.get("logged_in"):
+        return _json_error(
+            "未登入系統",
+            "UNAUTHORIZED",
+            401
+        )
+
+    company_id = _session_company_id()
+
+    if company_id is None:
+        return _company_context_required_response(
+            api_request=True
+        )
+
+    if assessment_id <= 0:
+        return _json_error(
+            "風險評鑑 ID 格式錯誤",
+            "INVALID_ASSESSMENT_ID",
+            400
+        )
+
+    data = request.get_json(
+        silent=True
+    )
+
+    if not isinstance(data, dict):
+        return _json_error(
+            "請提供有效的 JSON 物件",
+            "INVALID_JSON",
+            400
+        )
+
+    # ========================================================
+    # 取得 RiskOps 欄位
+    # ========================================================
+
+    treatment_note = data.get(
+        "treatment_note",
+        ""
+    )
+
+    treatment_due_date = data.get(
+        "treatment_due_date"
+    )
+
+    evidence_url = data.get(
+        "evidence_url",
+        ""
+    )
+
+    status = data.get(
+        "status",
+        "處理中"
+    )
+
+    # ========================================================
+    # 基本清理
+    # ========================================================
+
+    if treatment_note is None:
+        treatment_note = ""
+
+    if evidence_url is None:
+        evidence_url = ""
+
+    treatment_note = str(
+        treatment_note
+    ).strip()
+
+    evidence_url = str(
+        evidence_url
+    ).strip()
+
+    if treatment_due_date is not None:
+        treatment_due_date = str(
+            treatment_due_date
+        ).strip()
+
+        if treatment_due_date == "":
+            treatment_due_date = None
+
+    # ========================================================
+    # Status 驗證
+    # ========================================================
+
+    if status not in RISKOPS_STATUSES:
+        return _json_error(
+            "不支援的 RiskOps 狀態",
+            "INVALID_RISKOPS_STATUS",
+            400
+        )
+
+    # ========================================================
+    # 日期驗證
+    # ========================================================
+
+    if treatment_due_date:
+
+        try:
+            datetime.strptime(
+                treatment_due_date,
+                "%Y-%m-%d"
+            )
+
+        except ValueError:
+            return _json_error(
+                "預計完成日期格式錯誤，請使用 YYYY-MM-DD",
+                "INVALID_DUE_DATE",
+                400
+            )
+
+    # ========================================================
+    # 權限 / Tenant 驗證
+    #
+    # 只允許操作目前公司的 risk_assessment。
+    # ========================================================
+
+    try:
+
+        supabase = get_supabase_client()
+
+        assessment_response = (
+            supabase
+            .table("risk_assessments")
+            .select(
+                """
+                id,
+                company_id,
+                asset_id,
+                ai_suggestion,
+                status
+                """
+            )
+            .eq(
+                "id",
+                assessment_id
+            )
+            .eq(
+                "company_id",
+                company_id
+            )
+            .limit(1)
+            .execute()
+        )
+
+        assessments = (
+            assessment_response.data
+            or []
+        )
+
+        if not assessments:
+            return _json_error(
+                "找不到此風險評鑑紀錄",
+                "ASSESSMENT_NOT_FOUND",
+                404
+            )
+
+        assessment = assessments[0]
+
+        # ====================================================
+        # 儲存 RiskOps
+        # ====================================================
+
+        update_data = {
+            "treatment_note": treatment_note,
+            "treatment_due_date": treatment_due_date,
+            "evidence_url": evidence_url,
+            "status": status
+        }
+
+        update_response = (
+            supabase
+            .table("risk_assessments")
+            .update(update_data)
+            .eq(
+                "id",
+                assessment_id
+            )
+            .eq(
+                "company_id",
+                company_id
+            )
+            .execute()
+        )
+
+        updated_data = (
+            update_response.data
+            or []
+        )
+
+        # ====================================================
+        # Audit Log
+        # ====================================================
+
+        try:
+
+            user_id = session.get(
+                "user_id"
+            )
+
+            supabase.table(
+                "audit_logs"
+            ).insert({
+                "user_id": user_id,
+                "action": "更新 RiskOps Lite",
+                "asset_id": assessment.get("asset_id"),
+                "ip_address": request.remote_addr,
+                "status": "成功",
+                "log_time": datetime.now().isoformat()
+            }).execute()
+
+        except Exception:
+            logger.warning(
+                "RiskOps Lite 稽核日誌寫入失敗"
+            )
+
+        return jsonify({
+            "success": True,
+            "message": "RiskOps Lite 儲存成功",
+            "assessment_id": assessment_id,
+            "status": status,
+            "data": updated_data
+        }), 200
+
+    except Exception as exc:
+
+        logger.exception(
+            "儲存 RiskOps Lite 失敗：%s",
+            exc
+        )
+
+        return _json_error(
+            "RiskOps Lite 儲存失敗",
+            "SAVE_RISKOPS_FAILED",
+            503
+        )
 # ============================================================
 # 歷史風險評鑑（直接依 risk_assessments.company_id 查詢）
 # ============================================================
@@ -1632,14 +2032,80 @@ def ai_advice():
 
 
     # ========================================================
-    # 13. 回傳 AI 結果
+    # 14. 回傳 AI 結果
     # ========================================================
+    try:
 
+        assessment_response = (
+            supabase
+            .table("risk_assessments")
+            .select("id, asset_id, company_id, status")
+            .eq("asset_id", asset_id)
+            .eq("company_id", company_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        assessments = (
+            assessment_response.data
+            or []
+        )
+
+        if not assessments:
+
+            return _json_error(
+                "找不到此資產的風險評鑑紀錄",
+                "ASSESSMENT_NOT_FOUND",
+                404
+            )
+
+        assessment_id = assessments[0]["id"]
+
+        # ========================================================
+        # 將原始 AI 建議保存到 risk_assessments
+        # ========================================================
+        update_response = (
+            supabase
+            .table("risk_assessments")
+            .update({
+                "ai_suggestion": advice
+            })
+            .eq("id", assessment_id)
+            .eq("company_id", company_id)
+            .execute()
+        )
+
+        logger.info(
+            "AI 建議已寫入 risk_assessments：assessment_id=%s",
+            assessment_id
+        )
+
+        logger.info(
+            "AI 建議 UPDATE 執行完成：assessment_id=%s",
+            assessment_id
+        )
+        
+    except Exception as e:
+
+        logger.exception(
+            "取得風險評鑑紀錄失敗：%s",
+            e
+        )
+
+        return _json_error(
+            "無法取得風險評鑑紀錄",
+            "ASSESSMENT_FETCH_FAILED",
+            500
+        )
+    
     return jsonify({
 
         "success": True,
 
         "asset_id": asset_id,
+        
+        "assessment_id": assessment_id,
 
         "asset_name": asset_name,
 
@@ -1759,3 +2225,4 @@ def export():
             "REPORT_EXPORT_FAILED",
             503
         )
+
