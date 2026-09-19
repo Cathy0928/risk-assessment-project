@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
@@ -12,7 +13,12 @@ except ImportError:
 # ==========================
 # Environment
 # ==========================
-load_dotenv()
+# 固定讀取專案根目錄的 .env
+BASE_DIR = Path(__file__).resolve().parents[1]
+ENV_FILE = BASE_DIR / ".env"
+
+load_dotenv(ENV_FILE)
+
 logger = logging.getLogger(__name__)
 
 # ==========================
@@ -518,3 +524,4 @@ CVE ID：{cve_id}
         )
 
     return "\n--------------------\n".join(context_parts)
+
