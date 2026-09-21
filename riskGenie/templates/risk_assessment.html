@@ -861,6 +861,56 @@
 
         </div>
 
+
+        <!-- =================================================
+             歷史評鑑紀錄
+             重新開啟過去的評鑑，查看 AI 建議與改善紀錄。
+             不依賴 sessionStorage：連結直接帶 assessment_id，
+             重新登入後仍能透過這裡找到原本的紀錄。
+        ================================================== -->
+
+        <div
+            class="assessment-container"
+            id="historySection"
+            style="margin-top:24px;"
+        >
+
+            <h2 style="margin-top:0;color:#333;">
+                📜 歷史評鑑紀錄
+            </h2>
+
+            <p style="color:#666;margin-bottom:16px;">
+                點選「開啟」可重新查看該筆評鑑的 AI 建議與改善處置紀錄。
+            </p>
+
+            <div id="historyLoading" style="color:#666;">
+                載入中...
+            </div>
+
+            <div id="historyEmpty" style="display:none;color:#666;">
+                目前沒有歷史評鑑紀錄。
+            </div>
+
+            <div id="historyError" style="display:none;color:#c0392b;"></div>
+
+            <table
+                id="historyTable"
+                style="display:none;width:100%;border-collapse:collapse;"
+            >
+                <thead>
+                    <tr style="text-align:left;border-bottom:1px solid #ddd;">
+                        <th style="padding:8px;">資產</th>
+                        <th style="padding:8px;">風險等級</th>
+                        <th style="padding:8px;">處置狀態</th>
+                        <th style="padding:8px;">建立時間</th>
+                        <th style="padding:8px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody"></tbody>
+            </table>
+
+        </div>
+
     </div>
 
 </div>
@@ -1042,6 +1092,10 @@ let currentAssets = [];
 
 let currentRiskData = null;
 
+// 目前評鑑資產已儲存到資料庫後的 assessment id。
+// 用來讓「AI 建議」精準寫回這一筆評鑑，而不是猜測「最新一筆」。
+let currentAssessmentId = null;
+
 
 /* ============================================================
    載入資產
@@ -1182,6 +1236,9 @@ function onAssetChanged() {
      */
 
     currentRiskData = null;
+
+    // 換了資產，舊的 assessment id 不再適用。
+    currentAssessmentId = null;
 
 
     document.getElementById(
@@ -1698,6 +1755,11 @@ async function confirmAIAdvice() {
                     asset.id
                 ),
 
+            // 精準指定要寫入 AI 建議的評鑑紀錄，
+            // 避免同一資產有多筆評鑑時寫錯對象。
+            assessment_id:
+                currentAssessmentId,
+
             asset_name:
                 asset.asset_name || '',
 
@@ -2062,6 +2124,17 @@ async function saveAssessment() {
         }
 
 
+        // 記住這筆評鑑的 assessment id，
+        // 讓後續「AI 建議」能精準寫回這一筆紀錄。
+        currentAssessmentId =
+            (
+                data.data &&
+                data.data[0] &&
+                data.data[0].id
+            ) ||
+            null;
+
+
         alert(
             '✅ 評鑑紀錄已成功寫入資料庫！'
         );
@@ -2086,10 +2159,161 @@ async function saveAssessment() {
 
 
 /* ============================================================
+   歷史評鑑紀錄
+
+   沿用既有的 GET /api/risk-assessments，
+   讓使用者可以重新開啟過去的評鑑、查看 AI 建議與改善紀錄。
+
+   連結直接帶 assessment_id 在 URL 上，
+   不依賴 sessionStorage，重新登入後仍能找到原本的紀錄。
+============================================================ */
+
+const AI_ADVICE_PAGE_URL =
+    "{{ url_for('risk.ai_advice_page') }}";
+
+
+async function loadAssessmentHistory() {
+
+    const loading =
+        document.getElementById('historyLoading');
+
+    const empty =
+        document.getElementById('historyEmpty');
+
+    const errorBox =
+        document.getElementById('historyError');
+
+    const table =
+        document.getElementById('historyTable');
+
+    const tbody =
+        document.getElementById('historyTableBody');
+
+
+    loading.style.display = 'block';
+    empty.style.display = 'none';
+    errorBox.style.display = 'none';
+    table.style.display = 'none';
+    tbody.innerHTML = '';
+
+
+    try {
+
+        const response =
+            await fetch('/api/risk-assessments');
+
+        const result =
+            await response.json();
+
+        if (
+            !response.ok ||
+            !result.success
+        ) {
+            throw new Error(
+                result.error ||
+                '無法取得歷史評鑑紀錄'
+            );
+        }
+
+        const assessments =
+            result.assessments || [];
+
+        loading.style.display = 'none';
+
+        if (assessments.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        assessments.forEach(function(assessment) {
+
+            const asset =
+                assessment.assets || {};
+
+            const row =
+                document.createElement('tr');
+            row.style.borderBottom =
+                '1px solid #eee';
+
+            const nameCell =
+                document.createElement('td');
+            nameCell.style.padding = '8px';
+            nameCell.textContent =
+                (asset.asset_name || '未知資產') +
+                (
+                    asset.asset_id_code
+                        ? ` (${asset.asset_id_code})`
+                        : ''
+                );
+            row.appendChild(nameCell);
+
+            const levelCell =
+                document.createElement('td');
+            levelCell.style.padding = '8px';
+            levelCell.textContent =
+                assessment.risk_level || '-';
+            row.appendChild(levelCell);
+
+            const statusCell =
+                document.createElement('td');
+            statusCell.style.padding = '8px';
+            statusCell.textContent =
+                assessment.status || '待處理';
+            row.appendChild(statusCell);
+
+            const timeCell =
+                document.createElement('td');
+            timeCell.style.padding = '8px';
+            timeCell.textContent =
+                assessment.created_at
+                    ? new Date(assessment.created_at)
+                        .toLocaleString('zh-TW')
+                    : '-';
+            row.appendChild(timeCell);
+
+            const linkCell =
+                document.createElement('td');
+            linkCell.style.padding = '8px';
+
+            const link =
+                document.createElement('a');
+            link.href =
+                AI_ADVICE_PAGE_URL +
+                '?assessment_id=' +
+                encodeURIComponent(assessment.id);
+            link.textContent = '開啟 →';
+            link.style.color = '#1e88e5';
+            link.style.fontWeight = 'bold';
+            link.style.textDecoration = 'none';
+            linkCell.appendChild(link);
+            row.appendChild(linkCell);
+
+            tbody.appendChild(row);
+        });
+
+        table.style.display = 'table';
+
+    } catch (error) {
+
+        console.error(
+            '載入歷史評鑑失敗：',
+            error
+        );
+
+        loading.style.display = 'none';
+        errorBox.style.display = 'block';
+        errorBox.textContent =
+            '載入歷史評鑑失敗：' + error.message;
+    }
+}
+
+
+/* ============================================================
    初始化
 ============================================================ */
 
 fetchAssets();
+loadAssessmentHistory();
 
 </script>
 

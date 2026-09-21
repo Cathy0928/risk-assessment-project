@@ -879,9 +879,12 @@
 
 document.addEventListener(
     'DOMContentLoaded',
-    function() {
+    async function() {
 
-        loadAIAdvice();
+        // 先等 AI 建議（含重新開啟歷史評鑑的情況）載入完成，
+        // 確保 sessionStorage 已經有正確的 assessment_id，
+        // RiskOps 表單才會讀到對應的那一筆。
+        await loadAIAdvice();
         loadRiskOps();
 
     }
@@ -892,7 +895,7 @@ document.addEventListener(
    載入 AI 結果
 ============================================================ */
 
-function loadAIAdvice() {
+async function loadAIAdvice() {
 
     const loading =
         document.getElementById(
@@ -913,35 +916,150 @@ function loadAIAdvice() {
 
 
     /* ========================================================
-       從 sessionStorage 取得資料
+       重新開啟歷史評鑑：URL 帶 assessment_id 時，
+       以後端資料為準，不依賴 sessionStorage
+       （重新登入、換裝置後仍能找到原本紀錄）。
     ======================================================== */
 
-    const savedData =
-        sessionStorage.getItem(
-            'riskGenieAIAdvice'
-        );
-
-
-    if (!savedData) {
-
-        loading.style.display =
-            'none';
-
-
-        empty.style.display =
-            'block';
-
-
-        return;
-    }
+    const urlAssessmentId =
+        new URLSearchParams(
+            window.location.search
+        ).get('assessment_id');
 
 
     try {
 
-        const data =
-            JSON.parse(
-                savedData
+        let data = null;
+
+
+        if (urlAssessmentId) {
+
+            const response =
+                await fetch(
+                    `/api/risk-assessments/${urlAssessmentId}/riskops`
+                );
+
+
+            const apiResult =
+                await response.json();
+
+
+            if (
+                !response.ok ||
+                !apiResult.success
+            ) {
+
+                throw new Error(
+                    apiResult.error ||
+                    '找不到此風險評鑑紀錄'
+                );
+            }
+
+
+            const assessment =
+                apiResult.assessment;
+
+
+            data = {
+
+                asset_id:
+                    assessment.asset_id,
+
+                assessment_id:
+                    assessment.id,
+
+                asset_name:
+                    assessment.asset_name,
+
+                asset_type:
+                    assessment.asset_type,
+
+                description:
+                    assessment.description,
+
+                threat_description:
+                    assessment.threat_description,
+
+                advice:
+                    assessment.ai_suggestion,
+
+                status:
+                    assessment.status,
+
+                generated_at:
+                    assessment.created_at,
+
+                risk_data: {
+
+                    confidentiality:
+                        assessment.confidentiality,
+
+                    integrity:
+                        assessment.integrity,
+
+                    availability:
+                        assessment.availability,
+
+                    legality:
+                        assessment.legality,
+
+                    cvss_score:
+                        assessment.cvss_score,
+
+                    likelihood_score:
+                        assessment.likelihood_score,
+
+                    impact_score:
+                        assessment.impact_score,
+
+                    risk_score:
+                        assessment.risk_score,
+
+                    risk_level:
+                        assessment.risk_level
+                }
+            };
+
+            // 存進 sessionStorage，讓既有的 RiskOps 表單邏輯
+            // （loadRiskOps / saveRiskOps）不用另外改寫也能沿用；
+            // 但「載入的來源」仍是後端，不是 sessionStorage。
+            sessionStorage.setItem(
+                'riskGenieAIAdvice',
+                JSON.stringify(data)
             );
+
+        } else {
+
+            /* ====================================================
+               從 sessionStorage 取得資料
+               （剛產生完 AI 建議、還在同一個 session 的情況）
+            ==================================================== */
+
+            const savedData =
+                sessionStorage.getItem(
+                    'riskGenieAIAdvice'
+                );
+
+
+            if (!savedData) {
+
+                loading.style.display =
+                    'none';
+
+
+                empty.style.display =
+                    'block';
+
+
+                return;
+            }
+
+
+            data =
+                JSON.parse(
+                    savedData
+                );
+        }
 
 
         console.log(
@@ -1193,7 +1311,7 @@ async function loadRiskOps() {
 
         if (!response.ok || !result.success) {
             throw new Error(
-                result.message || '無法取得 RiskOps 資料'
+                result.error || '無法取得 RiskOps 資料'
             );
         }
 
@@ -1291,7 +1409,7 @@ async function saveRiskOps() {
 
         if (!response.ok || !result.success) {
             throw new Error(
-                result.message || 'RiskOps 儲存失敗'
+                result.error || 'RiskOps 儲存失敗'
             );
         }
 

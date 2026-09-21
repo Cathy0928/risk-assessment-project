@@ -54,6 +54,7 @@ class FakeQuery:
         self.limit_value = None
         self.operation = "select"
         self.insert_payload = None
+        self.update_payload = None
 
     def select(self, fields):
         self.operation = "select"
@@ -63,6 +64,11 @@ class FakeQuery:
     def insert(self, payload):
         self.operation = "insert"
         self.insert_payload = deepcopy(payload)
+        return self
+
+    def update(self, payload):
+        self.operation = "update"
+        self.update_payload = deepcopy(payload)
         return self
 
     def eq(self, field, value):
@@ -80,6 +86,23 @@ class FakeQuery:
     def order(self, *_args, **_kwargs):
         return self
 
+    def _matches(self, record):
+        for operation, field, value in self.filters:
+            if operation == "eq":
+                if record.get(field) != value:
+                    return False
+            else:
+                if record.get(field) not in value:
+                    return False
+        return True
+
+    def _matching_records(self):
+        return [
+            record.copy()
+            for record in self.client.records.get(self.table_name, [])
+            if self._matches(record)
+        ]
+
     def execute(self):
         if self.operation == "insert":
             inserted = deepcopy(self.insert_payload)
@@ -92,24 +115,24 @@ class FakeQuery:
             })
             return SimpleNamespace(data=[inserted])
 
-        records = [
-            record.copy()
-            for record in self.client.records.get(self.table_name, [])
-        ]
+        if self.operation == "update":
+            # Mutate the actual stored records (not copies) so later
+            # selects observe the update, matching real Supabase semantics.
+            updated = []
+            for record in self.client.records.get(self.table_name, []):
+                if self._matches(record):
+                    record.update(deepcopy(self.update_payload))
+                    updated.append(record.copy())
 
-        for operation, field, value in self.filters:
-            if operation == "eq":
-                records = [
-                    record
-                    for record in records
-                    if record.get(field) == value
-                ]
-            else:
-                records = [
-                    record
-                    for record in records
-                    if record.get(field) in value
-                ]
+            self.client.queries.append({
+                "table": self.table_name,
+                "filters": list(self.filters),
+                "operation": "update",
+                "payload": deepcopy(self.update_payload),
+            })
+            return SimpleNamespace(data=updated)
+
+        records = self._matching_records()
 
         if self.limit_value is not None:
             records = records[:self.limit_value]
@@ -821,12 +844,24 @@ def test_ai_advice_exception_does_not_leak_details(client, monkeypatch):
     assert "https://" not in str(body)
 
 
-def test_ai_advice_uses_session_company_and_returns_advice(
+def test_ai_advice_without_assessment_id_uses_session_company_for_preview(
     client, monkeypatch
 ):
     from riskGenie.services import risk_routes
 
-    fake = install_fake_supabase(monkeypatch, assets=[asset_record()])
+    fake = install_fake_supabase(
+        monkeypatch,
+        assets=[asset_record()],
+        assessments=[
+            {
+                "id": 9001,
+                "asset_id": 701,
+                "company_id": 7,
+                "status": "待處理",
+                "created_at": "2026-01-01T00:00:00",
+            }
+        ],
+    )
     monkeypatch.setattr(risk_routes, "is_gemini_configured", lambda: True)
     monkeypatch.setattr(
         risk_routes,
@@ -838,9 +873,16 @@ def test_ai_advice_uses_session_company_and_returns_advice(
     response = client.post("/api/ai-advice", json=valid_ai_payload())
 
     assert response.status_code == 200
-    assert response.get_json()["advice"] == "請優先修補公開服務。"
+    body = response.get_json()
+    assert body["advice"] == "請優先修補公開服務。"
+    assert body["assessment_id"] is None
     assert ("eq", "company_id", 7) in fake.queries[0]["filters"]
     assert ("eq", "is_deleted", False) in fake.queries[0]["filters"]
+
+    # 沒有 assessment_id 時只預覽，不得改動既有評鑑。
+    stored = fake.records["risk_assessments"][0]
+    assert stored.get("ai_suggestion") is None
+    assert stored["status"] == "待處理"
 
 
 def test_export_only_contains_current_company_data(client, monkeypatch):

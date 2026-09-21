@@ -1005,6 +1005,12 @@ def get_riskops_api(assessment_id):
                 treatment_note,
                 treatment_due_date,
                 evidence_url,
+                threat_description,
+                cvss_score,
+                likelihood_score,
+                impact_score,
+                risk_score,
+                risk_level,
                 created_at
                 """
             )
@@ -1030,7 +1036,8 @@ def get_riskops_api(assessment_id):
             )
 
         # =================================================
-        # 取得該資產的負責人 asset_owner
+        # 取得資產資料（重新開啟歷史評鑑時，
+        # 讓 AI 建議頁能顯示資產名稱 / CIA / 負責人）
         # =================================================
 
         assessment = assessments[0]
@@ -1038,12 +1045,24 @@ def get_riskops_api(assessment_id):
         asset_id = assessment.get("asset_id")
 
         asset_owner = ""
+        asset_info = {}
 
         if asset_id:
             asset_response = (
                 supabase
                 .table("assets")
-                .select("risk_owner")
+                .select(
+                    """
+                    asset_name,
+                    asset_type,
+                    description,
+                    confidentiality,
+                    integrity,
+                    availability,
+                    legality,
+                    risk_owner
+                    """
+                )
                 .eq("id", asset_id)
                 .eq("company_id", company_id)
                 .limit(1)
@@ -1053,13 +1072,21 @@ def get_riskops_api(assessment_id):
             asset_data = asset_response.data or []
 
             if asset_data:
+                asset_info = asset_data[0]
                 asset_owner = (
-                    asset_data[0].get("risk_owner")
+                    asset_info.get("risk_owner")
                     or ""
                 )
 
-        # 將負責人放進回傳資料
+        # 將負責人與資產資料放進回傳資料
         assessment["asset_owner"] = asset_owner
+        assessment["asset_name"] = asset_info.get("asset_name")
+        assessment["asset_type"] = asset_info.get("asset_type")
+        assessment["description"] = asset_info.get("description")
+        assessment["confidentiality"] = asset_info.get("confidentiality")
+        assessment["integrity"] = asset_info.get("integrity")
+        assessment["availability"] = asset_info.get("availability")
+        assessment["legality"] = asset_info.get("legality")
 
         return jsonify({
             "success": True,
@@ -1179,6 +1206,21 @@ def save_riskops_api(assessment_id):
         return _json_error(
             "不支援的 RiskOps 狀態",
             "INVALID_RISKOPS_STATUS",
+            400
+        )
+
+    # ========================================================
+    # 「已完成」前置條件
+    #
+    # 「處置已完成」只代表使用者已完成填寫的改善措施，
+    # 不代表風險已消除，也不會回頭調整 risk_score。
+    # 這裡只做最小驗證：不允許沒有改善內容就標記完成。
+    # ========================================================
+
+    if status == "已完成" and not treatment_note:
+        return _json_error(
+            "標記為已完成前，請先填寫實際改善處理內容",
+            "TREATMENT_NOTE_REQUIRED_FOR_COMPLETION",
             400
         )
 
@@ -2032,60 +2074,104 @@ def ai_advice():
 
 
     # ========================================================
+    # 13. 取得欲寫入的風險評鑑 ID
+    #
+    # 只有前端明確傳入 assessment_id 時才允許寫入，
+    # 避免同一資產有多筆評鑑時把建議寫到錯誤紀錄。
+    # 沒有 assessment_id 時仍可產生預覽，但不得持久化。
+    # ========================================================
+
+    requested_assessment_id = data.get("assessment_id")
+
+    if requested_assessment_id in (None, ""):
+        requested_assessment_id = None
+
+    else:
+        try:
+            if isinstance(requested_assessment_id, bool):
+                raise ValueError
+
+            requested_assessment_id = int(requested_assessment_id)
+
+            if requested_assessment_id <= 0:
+                raise ValueError
+
+        except (TypeError, ValueError):
+            return _json_error(
+                "風險評鑑 ID 格式錯誤",
+                "INVALID_ASSESSMENT_ID",
+                400
+            )
+
+
+    # ========================================================
     # 14. 回傳 AI 結果
     # ========================================================
     try:
 
-        assessment_response = (
-            supabase
-            .table("risk_assessments")
-            .select("id, asset_id, company_id, status")
-            .eq("asset_id", asset_id)
-            .eq("company_id", company_id)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
+        if requested_assessment_id is not None:
 
-        assessments = (
-            assessment_response.data
-            or []
-        )
-
-        if not assessments:
-
-            return _json_error(
-                "找不到此資產的風險評鑑紀錄",
-                "ASSESSMENT_NOT_FOUND",
-                404
+            # 明確指定 assessment_id：
+            # 只允許寫入「目前登入公司」且「屬於這個資產」的那一筆，
+            # 不接受前端指定其他公司或其他資產的紀錄。
+            assessment_response = (
+                supabase
+                .table("risk_assessments")
+                .select("id, asset_id, company_id, status")
+                .eq("id", requested_assessment_id)
+                .eq("company_id", company_id)
+                .limit(1)
+                .execute()
             )
 
-        assessment_id = assessments[0]["id"]
+            assessments = (
+                assessment_response.data
+                or []
+            )
 
-        # ========================================================
-        # 將原始 AI 建議保存到 risk_assessments
-        # ========================================================
-        update_response = (
-            supabase
-            .table("risk_assessments")
-            .update({
-                "ai_suggestion": advice
-            })
-            .eq("id", assessment_id)
-            .eq("company_id", company_id)
-            .execute()
-        )
+            if not assessments:
 
-        logger.info(
-            "AI 建議已寫入 risk_assessments：assessment_id=%s",
-            assessment_id
-        )
+                return _json_error(
+                    "找不到此風險評鑑紀錄，或不屬於目前公司",
+                    "ASSESSMENT_NOT_FOUND",
+                    404
+                )
 
-        logger.info(
-            "AI 建議 UPDATE 執行完成：assessment_id=%s",
-            assessment_id
-        )
-        
+            if assessments[0].get("asset_id") != asset_id:
+
+                return _json_error(
+                    "風險評鑑紀錄與資產不符",
+                    "ASSESSMENT_ASSET_MISMATCH",
+                    400
+                )
+
+            assessment_id = assessments[0]["id"]
+
+            # 只更新 ai_suggestion，不動評鑑或處置的其他欄位。
+            update_response = (
+                supabase
+                .table("risk_assessments")
+                .update({
+                    "ai_suggestion": advice
+                })
+                .eq("id", assessment_id)
+                .eq("company_id", company_id)
+                .execute()
+            )
+
+            logger.info(
+                "AI 建議已寫入 risk_assessments：assessment_id=%s",
+                assessment_id
+            )
+
+        else:
+            assessment_id = None
+            logger.info(
+                "AI Advisor 未收到 assessment_id；僅回傳預覽，不寫入："
+                "asset_id=%s",
+                asset_id
+            )
+
     except Exception as e:
 
         logger.exception(
@@ -2098,7 +2184,7 @@ def ai_advice():
             "ASSESSMENT_FETCH_FAILED",
             500
         )
-    
+
     return jsonify({
 
         "success": True,
