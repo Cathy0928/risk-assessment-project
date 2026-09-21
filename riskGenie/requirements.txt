@@ -6,3 +6,4 @@ pandas
 openpyxl
 google-generativeai
 google-genai
+requests
