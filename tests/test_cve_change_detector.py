@@ -66,6 +66,18 @@ def test_normalize_cve_prefers_cvss_v31_over_v2():
     assert normalized["cvss_score"] == 9.8
 
 
+def test_normalize_cve_prefers_cvss_v40_over_older_versions():
+    cve = raw_cve()
+    cve["metrics"]["cvssMetricV40"] = [
+        {"cvssData": {"baseScore": 9.3, "baseSeverity": "CRITICAL"}}
+    ]
+
+    normalized = normalize_cve(cve)
+
+    assert normalized["cvss_score"] == 9.3
+    assert normalized["severity"] == "CRITICAL"
+
+
 def test_normalize_cve_falls_back_to_cvss_v2_when_v3_absent():
     cve = raw_cve()
     del cve["metrics"]["cvssMetricV31"]

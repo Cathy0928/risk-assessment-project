@@ -25,6 +25,8 @@ SLEEP_TIME = 0.2
 
 EMBEDDING_DIMENSION = 768
 
+EMBEDDING_MODEL = "gemini-embedding-001"
+
 # Confirmed production table name via pg_class (OID 34266). A prior
 # screenshot-based guess said singular "cve_embedding" — that table does
 # not exist. The real, existing search_cve RPC already reads
@@ -66,8 +68,13 @@ def main(supabase=None, client=None, cve_ids=None, max_embeddings=None):
         )
 
     if client is None:
+        gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_api_key:
+            raise RuntimeError(
+                "Missing required environment variable: GEMINI_API_KEY"
+            )
         client = genai.Client(
-            api_key=os.getenv("GEMINI_API_KEY")
+            api_key=gemini_api_key
         )
 
     target_cve_ids = set(cve_ids) if cve_ids is not None else None
@@ -243,7 +250,7 @@ Severity:
 
 CWE:
 {cve.get('cwe')}
-"""
+""".strip()
 
             # ================================================
             # Gemini Embedding
@@ -270,12 +277,16 @@ CWE:
 
                     gemini_call_count += 1
                     result = client.models.embed_content(
-                        model="gemini-embedding-001",
+                        model=EMBEDDING_MODEL,
                         contents=content,
-                        config={"output_dimensionality": 768}
+                        config={"output_dimensionality": EMBEDDING_DIMENSION}
                     )
 
-                    embedding = result.embeddings[0].values
+                    embeddings = getattr(result, "embeddings", None)
+                    if not embeddings:
+                        raise ValueError("Gemini returned no embedding")
+
+                    embedding = embeddings[0].values
 
                     if len(embedding) != EMBEDDING_DIMENSION:
                         raise ValueError(

@@ -68,7 +68,14 @@ def _first_english(descriptions):
 def _extract_cvss(metrics):
     metrics = metrics or {}
 
-    for metric_key in ("cvssMetricV31", "cvssMetricV30", "cvssMetricV2"):
+    # Prefer the newest score available. NVD API 2.0 may expose CVSS v4.0
+    # records, which origin/master's normalizer already understood.
+    for metric_key in (
+        "cvssMetricV40",
+        "cvssMetricV31",
+        "cvssMetricV30",
+        "cvssMetricV2",
+    ):
         entries = metrics.get(metric_key)
         if entries:
             cvss_data = (entries[0] or {}).get("cvssData", {}) or {}

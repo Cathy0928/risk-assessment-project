@@ -192,11 +192,22 @@ class CVESyncService:
             )
 
             processed_cve_ids = []
+            seen_cve_ids = set()
             for raw_cve in self._nvd_client.iter_cves(
                 last_mod_start_date=window_start,
                 last_mod_end_date=window_end,
                 max_pages=max_pages,
             ):
+                # An overlap window or unstable upstream page can repeat a
+                # CVE. Process it once so counts and writes remain accurate.
+                raw_cve_id = (
+                    raw_cve.get("id") if isinstance(raw_cve, dict) else None
+                )
+                if raw_cve_id and raw_cve_id in seen_cve_ids:
+                    continue
+                if raw_cve_id:
+                    seen_cve_ids.add(raw_cve_id)
+
                 # Checked before every write so a lease lost mid-run (e.g.
                 # stolen after expiry) stops this process before it can
                 # write again, instead of only being caught at the end.
@@ -365,13 +376,16 @@ class CVESyncService:
     def _process_one(
         self, supabase, raw_cve, existing_hash_by_id, existing_ids, result
     ):
-        normalized = normalize_cve(raw_cve)
-        cve_id = normalized.get("cve_id")
-
-        if not cve_id:
-            return
-
+        cve_id = None
         try:
+            normalized = normalize_cve(raw_cve)
+            if not isinstance(normalized, dict):
+                raise ValueError("CVE normalization returned a non-object")
+
+            cve_id = normalized.get("cve_id")
+            if not cve_id:
+                raise ValueError("Normalized CVE has no cve_id")
+
             if str(normalized.get("vuln_status") or "").upper() == "REJECTED":
                 self._remove_rejected_cve(supabase, cve_id)
                 if cve_id in existing_ids:
@@ -410,9 +424,10 @@ class CVESyncService:
             return cve_id
 
         except Exception as exc:
-            logger.exception("Failed to sync %s: %s", cve_id, exc)
+            label = cve_id or "<unknown>"
+            logger.exception("Failed to sync %s: %s", label, exc)
             result.error_count += 1
-            result.errors.append(f"{cve_id}: {exc}")
+            result.errors.append(f"{label}: {exc}")
             # Deliberately not re-raised: one bad CVE must not abort the
             # whole run, and its existing row (if any) stays untouched.
             return None

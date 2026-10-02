@@ -23,8 +23,9 @@ whose `.get(...)` is fully under test control.
 """
 
 import logging
+import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -108,7 +109,9 @@ class NVDClient:
         max_backoff_seconds=DEFAULT_MAX_BACKOFF_SECONDS,
         sleep=None,
     ):
-        self._api_key = api_key
+        # Preserve explicit dependency injection while also supporting the
+        # environment-based configuration used by the legacy functional API.
+        self._api_key = api_key if api_key is not None else os.getenv("NVD_API_KEY")
         self._session = session or requests
         self._timeout = timeout
         self._max_retries = max_retries
@@ -420,3 +423,78 @@ class NVDClient:
             parsed = parsed.replace(tzinfo=timezone.utc)
 
         return parsed
+
+
+# ============================================================
+# Backward-compatible functional API
+# ============================================================
+
+# origin/master exposed these helpers before the class-based client became
+# the primary API. Keep them as thin adapters so existing callers retain the
+# class client's validation, retries, timeouts, and response parsing.
+NVDAPIError = NVDClientError
+
+
+def _format_nvd_datetime(value):
+    """Return a datetime in the timestamp format accepted by NVD API 2.0."""
+    if not isinstance(value, datetime):
+        raise TypeError("value must be a datetime")
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def fetch_cves(
+    modified_start,
+    modified_end=None,
+    results_per_page=DEFAULT_RESULTS_PER_PAGE,
+    client=None,
+):
+    """Fetch raw NVD vulnerability wrappers for a last-modified window.
+
+    New code should normally use :class:`NVDClient` directly. This adapter
+    preserves origin/master's public function without maintaining a second,
+    less thoroughly validated HTTP implementation.
+    """
+    modified_end = modified_end or datetime.now(timezone.utc)
+    start_text = _format_nvd_datetime(modified_start)
+    end_text = _format_nvd_datetime(modified_end)
+    nvd_client = client or NVDClient()
+
+    vulnerabilities = []
+    start_index = 0
+    nvd_client.last_iteration_complete = False
+
+    while True:
+        page = nvd_client.fetch_page(
+            last_mod_start_date=start_text,
+            last_mod_end_date=end_text,
+            start_index=start_index,
+            results_per_page=results_per_page,
+        )
+        rows = page["vulnerabilities"]
+        vulnerabilities.extend(rows)
+        start_index += len(rows)
+        total_results = page.get("totalResults") or 0
+
+        if not rows:
+            nvd_client.last_iteration_complete = start_index >= total_results
+            break
+        if start_index >= total_results:
+            nvd_client.last_iteration_complete = True
+            break
+
+    return vulnerabilities
+
+
+def fetch_cves_since(modified_start, overlap_minutes=2, client=None):
+    """Fetch CVEs since a checkpoint with a small boundary overlap."""
+    if not isinstance(modified_start, datetime):
+        raise TypeError("modified_start must be a datetime")
+    if modified_start.tzinfo is None:
+        modified_start = modified_start.replace(tzinfo=timezone.utc)
+    return fetch_cves(
+        modified_start=modified_start - timedelta(minutes=overlap_minutes),
+        modified_end=datetime.now(timezone.utc),
+        client=client,
+    )
