@@ -124,6 +124,13 @@ class FakeQuery:
 
         if self.operation == "insert":
             inserted = deepcopy(self.insert_payload)
+            # 真實 Supabase 會在 insert 時自動產生 bigint id；
+            # 這個 fake 也要模擬同樣的行為，否則依賴
+            # response.data[0]["id"] 的 contract 測試會失真。
+            inserted.setdefault(
+                "id",
+                len(self.client.records.get(self.table_name, [])) + 1,
+            )
             self.client.records.setdefault(self.table_name, []).append(inserted)
             return SimpleNamespace(data=[inserted])
 
@@ -198,12 +205,87 @@ class RaisingFakeSupabase(FakeSupabase):
         return query
 
 
+class ZeroRowUpdateFakeSupabase(FakeSupabase):
+    """Simulates an UPDATE that "succeeds" (no exception) but affects
+    zero rows — e.g. an RLS write policy that silently filters out the
+    row even though the matching SELECT could see it. `.execute()`
+    returns `data=[]` instead of the updated row.
+
+    This is the shape of bug that P0 closes: previously the route code
+    treated `update_response.data or []` as success even when it was
+    an empty list.
+    """
+
+    def __init__(self, *args, zero_row_table, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._zero_row_table = zero_row_table
+
+    def table(self, table_name):
+        query = FakeQuery(self, table_name)
+
+        if table_name == self._zero_row_table:
+            original_execute = query.execute
+
+            def guarded_execute():
+                if query.operation == "update":
+                    self.queries.append({
+                        "table": table_name,
+                        "operation": "update",
+                        "filters": list(query.filters),
+                    })
+                    return SimpleNamespace(data=[])
+                return original_execute()
+
+            query.execute = guarded_execute
+
+        return query
+
+
+class WrongRowUpdateFakeSupabase(FakeSupabase):
+    """Simulates an UPDATE whose response row doesn't match what we
+    asked for — e.g. a buggy RPC/trigger returning a stale or
+    unrelated row instead of the one addressed by the WHERE clause.
+
+    The route must never treat this as a persisted success just
+    because `data` is non-empty; it has to check the row's own id.
+    """
+
+    def __init__(self, *args, wrong_row_table, wrong_row, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._wrong_row_table = wrong_row_table
+        self._wrong_row = wrong_row
+
+    def table(self, table_name):
+        query = FakeQuery(self, table_name)
+
+        if table_name == self._wrong_row_table:
+            original_execute = query.execute
+
+            def guarded_execute():
+                if query.operation == "update":
+                    self.queries.append({
+                        "table": table_name,
+                        "operation": "update",
+                        "filters": list(query.filters),
+                    })
+                    return SimpleNamespace(
+                        data=[deepcopy(self._wrong_row)]
+                    )
+                return original_execute()
+
+            query.execute = guarded_execute
+
+        return query
+
+
 def install_fake_supabase(monkeypatch, fake):
     from riskGenie.models import supabase_db
     from riskGenie.services import risk_routes
 
     monkeypatch.setattr(risk_routes, "get_supabase_client", lambda: fake)
     monkeypatch.setattr(supabase_db, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(risk_routes, "get_supabase_admin_client", lambda: fake)
+    monkeypatch.setattr(supabase_db, "get_supabase_admin_client", lambda: fake)
     return fake
 
 
@@ -676,3 +758,546 @@ def test_save_riskops_returns_clean_error_when_status_column_missing(
     assert body["success"] is False
     assert body["code"] == "SAVE_RISKOPS_FAILED"
     assert "does not exist" not in body["error"]
+
+
+# ================================================================
+# 7. P0: UPDATE 回傳 0 rows 不可被誤判成功
+#
+# Supabase/Postgrest 的 UPDATE 在列不存在時不會丟例外，只會回傳
+# `data=[]`。先前的程式碼把 `update_response.data or []` 直接當成
+# 成功，即使陣列是空的 —— 等同「什麼都沒存到，卻回報成功」。
+# ================================================================
+
+def test_save_riskops_rejects_update_that_affects_zero_rows(
+    client, monkeypatch
+):
+    fake = ZeroRowUpdateFakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+        zero_row_table="risk_assessments",
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/1/riskops",
+        json={
+            "treatment_note": "已封鎖對外連線並套用修補",
+            "status": "處理中",
+        },
+    )
+
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["success"] is False
+    assert body["code"] == "RISKOPS_UPDATE_NOT_APPLIED"
+    assert isinstance(body["error"], str) and body["error"]
+    # 不可洩漏 Supabase 內部字樣。
+    assert "supabase" not in body["error"].lower()
+
+
+def test_save_riskops_returns_success_when_update_returns_matching_row(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/1/riskops",
+        json={
+            "treatment_note": "已封鎖對外連線並套用修補",
+            "status": "處理中",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert isinstance(body["data"], list) and len(body["data"]) == 1
+    assert body["data"][0]["id"] == 1
+
+
+def test_ai_advice_rejects_update_that_affects_zero_rows(
+    client, monkeypatch
+):
+    fake = ZeroRowUpdateFakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+        zero_row_table="risk_assessments",
+    )
+    install_fake_supabase(monkeypatch, fake)
+
+    call_count = {"n": 0}
+
+    from riskGenie.services import risk_routes
+
+    def fake_generate_advice(**_kwargs):
+        call_count["n"] += 1
+        return "請優先修補公開服務。"
+
+    monkeypatch.setattr(risk_routes, "is_gemini_configured", lambda: True)
+    monkeypatch.setattr(
+        risk_routes, "generate_advice", fake_generate_advice
+    )
+
+    login_as(client)
+
+    response = client.post(
+        "/api/ai-advice",
+        json=valid_ai_payload(assessment_id=1),
+    )
+
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["success"] is False
+    assert body["code"] == "AI_ADVICE_PERSIST_FAILED"
+    # Gemini 已經成功產生內容，不可丟棄 —— 前端要能把它顯示出來，
+    # 即使沒有成功寫入 DB。
+    assert body["advice"] == "請優先修補公開服務。"
+    assert body["assessment_id"] == 1
+    # 不可因為 UPDATE 失敗就重新呼叫一次 Gemini。
+    assert call_count["n"] == 1
+
+
+def test_ai_advice_persists_successfully_when_update_returns_matching_row(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    enable_ai(monkeypatch)
+    login_as(client)
+
+    response = client.post(
+        "/api/ai-advice",
+        json=valid_ai_payload(assessment_id=1),
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["assessment_id"] == 1
+    assert body["advice"] == "請優先修補公開服務。"
+    assert fake.records["risk_assessments"][0]["ai_suggestion"] == (
+        "請優先修補公開服務。"
+    )
+
+
+def test_save_riskops_rejects_update_that_returns_wrong_assessment_id(
+    client, monkeypatch
+):
+    fake = WrongRowUpdateFakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+        wrong_row_table="risk_assessments",
+        wrong_row=assessment_record(999),
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/1/riskops",
+        json={
+            "treatment_note": "已封鎖對外連線並套用修補",
+            "status": "處理中",
+        },
+    )
+
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["success"] is False
+    assert body["code"] == "RISKOPS_UPDATE_NOT_APPLIED"
+
+
+def test_save_riskops_rejects_update_row_with_mismatched_company_id(
+    client, monkeypatch
+):
+    fake = WrongRowUpdateFakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+        wrong_row_table="risk_assessments",
+        wrong_row=assessment_record(1, company_id=99),
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/api/risk-assessments/1/riskops",
+        json={
+            "treatment_note": "已封鎖對外連線並套用修補",
+            "status": "處理中",
+        },
+    )
+
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["success"] is False
+    assert body["code"] == "RISKOPS_UPDATE_NOT_APPLIED"
+
+
+def test_ai_advice_rejects_update_that_returns_wrong_assessment_id(
+    client, monkeypatch
+):
+    fake = WrongRowUpdateFakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+        wrong_row_table="risk_assessments",
+        wrong_row=assessment_record(999),
+    )
+    install_fake_supabase(monkeypatch, fake)
+
+    call_count = {"n": 0}
+
+    from riskGenie.services import risk_routes
+
+    def fake_generate_advice(**_kwargs):
+        call_count["n"] += 1
+        return "請優先修補公開服務。"
+
+    monkeypatch.setattr(risk_routes, "is_gemini_configured", lambda: True)
+    monkeypatch.setattr(
+        risk_routes, "generate_advice", fake_generate_advice
+    )
+
+    login_as(client)
+
+    response = client.post(
+        "/api/ai-advice",
+        json=valid_ai_payload(assessment_id=1),
+    )
+
+    assert response.status_code == 503
+    body = response.get_json()
+    assert body["success"] is False
+    assert body["code"] == "AI_ADVICE_PERSIST_FAILED"
+    assert body["advice"] == "請優先修補公開服務。"
+    assert body["assessment_id"] == 1
+    assert call_count["n"] == 1
+
+
+def test_ai_advice_preview_mode_without_assessment_id_does_not_update(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    enable_ai(monkeypatch)
+    login_as(client)
+
+    response = client.post("/api/ai-advice", json=valid_ai_payload())
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["success"] is True
+    assert body["assessment_id"] is None
+    assert body["advice"] == "請優先修補公開服務。"
+
+    update_ops = [
+        query
+        for query in fake.queries
+        if query.get("table") == "risk_assessments"
+        and query.get("operation") == "update"
+    ]
+    assert update_ops == []
+
+
+# ================================================================
+# 8. Privileged client 切換：risk_assessments 走 server-side
+# admin client，但租戶邊界必須完全不變。
+#
+# RLS 不再是 risk_assessments 這些 route 的授權邊界，所以這裡要
+# 特別驗證：即使拿掉了 RLS 當最後一道防線，Flask 層的 session
+# company_id + ownership 檢查仍然是唯一、且仍然有效的租戶隔離。
+# ================================================================
+
+def test_save_assessment_still_forces_session_company_with_admin_client(
+    client, monkeypatch
+):
+    """即使前端在 payload 裡塞一個 company_id，save 出來的紀錄也
+    必須是 session 的 company_id，不是前端給的那個。
+    """
+    fake = FakeSupabase(assets=[asset_record(company_id=7)])
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/api/risk-assessments/save",
+        json=valid_assessment_payload(company_id=99),
+    )
+
+    assert response.status_code == 201
+    stored = fake.records["risk_assessments"][0]
+    assert stored["company_id"] == 7
+
+
+def test_save_assessment_rejects_cross_company_asset_with_admin_client(
+    client, monkeypatch
+):
+    fake = FakeSupabase(assets=[asset_record(company_id=99)])
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/api/risk-assessments/save",
+        json=valid_assessment_payload(),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "ASSET_NOT_FOUND"
+    assert fake.records["risk_assessments"] == []
+
+
+def test_get_riskops_with_admin_client_still_rejects_cross_company(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[asset_record(company_id=99)],
+        assessments=[assessment_record(1, company_id=99)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.get("/api/risk-assessments/1/riskops")
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "ASSESSMENT_NOT_FOUND"
+
+
+def test_save_riskops_with_admin_client_still_rejects_cross_company(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[asset_record(company_id=99)],
+        assessments=[assessment_record(1, company_id=99)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/api/risk-assessments/1/riskops",
+        json={"treatment_note": "駭進去改的", "status": "已完成"},
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "ASSESSMENT_NOT_FOUND"
+    stored = fake.records["risk_assessments"][0]
+    assert stored["treatment_note"] is None
+
+
+def test_ai_advice_with_admin_client_still_rejects_cross_company(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[asset_record()],
+        assessments=[assessment_record(1, company_id=99, asset_id=701)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    enable_ai(monkeypatch)
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/api/ai-advice",
+        json=valid_ai_payload(assessment_id=1),
+    )
+
+    assert response.status_code == 404
+    assert response.get_json()["code"] == "ASSESSMENT_NOT_FOUND"
+    assert fake.records["risk_assessments"][0]["ai_suggestion"] is None
+
+
+def test_frontend_company_id_in_riskops_payload_does_not_change_scope(
+    client, monkeypatch
+):
+    """save_riskops_api 的 payload 根本不接受 company_id 欄位；即使
+    前端硬塞進去，scope 仍必須只看 session company_id。
+    """
+    fake = FakeSupabase(
+        assets=[asset_record(company_id=7)],
+        assessments=[assessment_record(1, company_id=7)],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.post(
+        "/api/risk-assessments/1/riskops",
+        json={
+            "treatment_note": "已修補",
+            "status": "處理中",
+            "company_id": 99,
+        },
+    )
+
+    assert response.status_code == 200
+    stored = fake.records["risk_assessments"][0]
+    assert stored["company_id"] == 7
+
+
+def test_history_list_only_returns_session_company_with_admin_client(
+    client, monkeypatch
+):
+    fake = FakeSupabase(
+        assets=[
+            asset_record(asset_id=701, company_id=7),
+            asset_record(asset_id=702, company_id=99),
+        ],
+        assessments=[
+            assessment_record(1, asset_id=701, company_id=7),
+            assessment_record(2, asset_id=702, company_id=99),
+        ],
+    )
+    install_fake_supabase(monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    response = client.get("/api/risk-assessments")
+
+    assert response.status_code == 200
+    returned_ids = [
+        assessment["id"]
+        for assessment in response.get_json()["assessments"]
+    ]
+    assert returned_ids == [1]
+
+
+# ================================================================
+# 9. Privileged credential 不得外洩，且初始化失敗必須 fail closed
+# ================================================================
+
+def test_admin_client_builder_not_referenced_in_templates_or_static_js():
+    """get_supabase_admin_client / SUPABASE_SECRET_KEY / service_role
+    這些字樣絕對不可以出現在任何會送到瀏覽器的檔案裡。
+    """
+    forbidden = (
+        "get_supabase_admin_client",
+        "SUPABASE_SECRET_KEY",
+        "service_role",
+    )
+
+    search_roots = []
+    templates_dir = ROOT / "riskGenie" / "templates"
+    static_dir = ROOT / "riskGenie" / "static"
+
+    if templates_dir.exists():
+        search_roots.append(templates_dir)
+    if static_dir.exists():
+        search_roots.append(static_dir)
+
+    assert search_roots, "找不到 templates/static 目錄，測試環境有問題"
+
+    for root in search_roots:
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+
+            for needle in forbidden:
+                assert needle not in text, (
+                    f"{needle} 不應該出現在 {path}，"
+                    "privileged client 只能存在 server-side 程式碼"
+                )
+
+
+def test_privileged_credential_does_not_leak_into_http_response(
+    client, monkeypatch
+):
+    """當 admin client 初始化失敗時，回應只能有乾淨的 JSON 錯誤，
+    不可以把環境變數名稱、secret key 字樣洩漏到前端。
+    """
+    from riskGenie.services import risk_routes
+    from riskGenie.services.supabase_client import SupabaseConfigError
+
+    def fail_admin_client():
+        raise SupabaseConfigError(
+            "Missing required environment variable: SUPABASE_SECRET_KEY"
+        )
+
+    monkeypatch.setattr(
+        risk_routes, "get_supabase_admin_client", fail_admin_client
+    )
+    login_as(client)
+
+    response = client.get("/api/risk-assessments/1/riskops")
+
+    assert response.status_code >= 500
+    body_text = response.get_data(as_text=True)
+    assert "SUPABASE_SECRET_KEY" not in body_text
+    assert "SupabaseConfigError" not in body_text
+    assert "Traceback" not in body_text
+
+
+@pytest.mark.parametrize(
+    "make_request",
+    [
+        pytest.param(
+            lambda client: client.get("/api/risk-assessments/1/riskops"),
+            id="get_riskops",
+        ),
+        pytest.param(
+            lambda client: client.post(
+                "/api/risk-assessments/1/riskops",
+                json={"treatment_note": "x", "status": "處理中"},
+            ),
+            id="save_riskops",
+        ),
+        pytest.param(
+            lambda client: client.get("/api/risk-assessments"),
+            id="history_list",
+        ),
+        pytest.param(
+            lambda client: client.post(
+                "/api/risk-assessments/save",
+                json=valid_assessment_payload(),
+            ),
+            id="save_assessment",
+        ),
+    ],
+)
+def test_privileged_client_init_failure_fails_closed(
+    client, monkeypatch, make_request
+):
+    """admin client 初始化失敗（例如 SUPABASE_SECRET_KEY 沒設好）時，
+    route 必須回報失敗，絕對不可以「反正拿不到特權 client 就當作
+    沒事」而 fallback 成某種寬鬆行為。
+    """
+    from riskGenie.models import supabase_db
+    from riskGenie.services import risk_routes
+    from riskGenie.services.supabase_client import SupabaseConfigError
+
+    fake = FakeSupabase(
+        assets=[asset_record(company_id=7)],
+        assessments=[assessment_record(1, company_id=7)],
+    )
+    # anon client 仍然正常（模擬只有 privileged key 設定有問題）。
+    monkeypatch.setattr(risk_routes, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(supabase_db, "get_supabase_client", lambda: fake)
+
+    def fail_admin_client():
+        raise SupabaseConfigError(
+            "Missing required environment variable: SUPABASE_SECRET_KEY"
+        )
+
+    monkeypatch.setattr(
+        risk_routes, "get_supabase_admin_client", fail_admin_client
+    )
+    monkeypatch.setattr(
+        supabase_db, "get_supabase_admin_client", fail_admin_client
+    )
+
+    login_as(client, company_id=7)
+
+    response = make_request(client)
+
+    assert response.status_code >= 500
+    body = response.get_json()
+    assert body["success"] is False

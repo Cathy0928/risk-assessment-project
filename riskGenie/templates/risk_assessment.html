@@ -411,6 +411,27 @@
         }
 
 
+        #aiPreviewWarning {
+
+            display: none;
+
+            margin-top: 15px;
+
+            padding: 12px;
+
+            color: #856404;
+
+            background: #fff8e1;
+
+            border:
+                1px solid #ffe08a;
+
+            border-radius: 5px;
+
+            font-weight: bold;
+        }
+
+
         @media (max-width: 700px) {
 
             .ai-modal-content {
@@ -621,6 +642,7 @@
                             max="5"
                             value="3"
                             required
+                            oninput="invalidateCurrentResult()"
                         >
 
                     </div>
@@ -640,6 +662,7 @@
                             max="5"
                             value="3"
                             required
+                            oninput="invalidateCurrentResult()"
                         >
 
                     </div>
@@ -659,6 +682,7 @@
                             max="5"
                             value="3"
                             required
+                            oninput="invalidateCurrentResult()"
                         >
 
                     </div>
@@ -678,6 +702,7 @@
                             max="5"
                             value="1"
                             required
+                            oninput="invalidateCurrentResult()"
                         >
 
                     </div>
@@ -699,6 +724,7 @@
                         class="form-control"
                         rows="3"
                         placeholder="例：伺服器未更新防毒軟體，易受勒索病毒攻擊"
+                        oninput="invalidateCurrentResult()"
                     ></textarea>
 
                 </div>
@@ -729,6 +755,7 @@
                             min="0"
                             max="10"
                             value="7.5"
+                            oninput="invalidateCurrentResult()"
                         >
 
                     </div>
@@ -748,6 +775,7 @@
                             min="1"
                             max="5"
                             value="3"
+                            oninput="invalidateCurrentResult()"
                         >
 
                     </div>
@@ -771,10 +799,23 @@
                     <button
                         type="button"
                         class="btn-action btn-save"
+                        id="saveAssessmentBtn"
                         onclick="saveAssessment()"
+                        disabled
                     >
                         2. 儲存評鑑結果
                     </button>
+
+                    <div
+                        id="saveHint"
+                        style="
+                            margin-top:8px;
+                            color:#888;
+                            font-size:13px;
+                        "
+                    >
+                        請先選擇資產並完成初步評鑑後再儲存。
+                    </div>
 
                 </div>
 
@@ -1035,6 +1076,20 @@
 
 
             <!-- =================================================
+                 Preview-only 警示
+
+                 沒有 currentAssessmentId 時，這份 AI 建議
+                 還沒有綁定到資料庫裡任何已儲存的風險評鑑，
+                 不能拿去用在 RiskOps Lite。
+            ================================================== -->
+
+            <div id="aiPreviewWarning">
+                ⚠️ 此建議尚未綁定已儲存的風險評鑑，無法使用 RiskOps。
+                請先完成「2. 儲存評鑑結果」再產生 AI 建議。
+            </div>
+
+
+            <!-- =================================================
                  Buttons
             ================================================== -->
 
@@ -1182,6 +1237,73 @@ async function fetchAssets() {
 
 
 /* ============================================================
+   儲存按鈕狀態 / 評鑑結果失效
+
+   currentRiskData 代表「目前畫面上，已經成功完成初步評鑑、
+   且尚未被任何輸入變更影響」的計算結果。
+
+   任何會影響風險計算或儲存內容的輸入（資產、CIA/L、CVSS、
+   發生機率、威脅描述）改變時，都必須呼叫
+   invalidateCurrentResult()，讓舊結果失效、
+   儲存按鈕回到 disabled，強制使用者重新執行「1. 計算風險值」。
+============================================================ */
+
+function updateSaveButtonState() {
+
+    const assetId =
+        document.getElementById(
+            'assetSelect'
+        ).value;
+
+    const saveBtn =
+        document.getElementById(
+            'saveAssessmentBtn'
+        );
+
+    const hint =
+        document.getElementById(
+            'saveHint'
+        );
+
+    if (!assetId) {
+
+        saveBtn.disabled = true;
+        hint.textContent =
+            '請先選擇資產並完成初步評鑑後再儲存。';
+        return;
+    }
+
+    if (!currentRiskData) {
+
+        saveBtn.disabled = true;
+        hint.textContent =
+            '資料已變更，請重新執行「1. 計算風險值」後再儲存。';
+        return;
+    }
+
+    saveBtn.disabled = false;
+    hint.textContent =
+        '已完成風險評鑑，可以儲存結果。';
+}
+
+
+function invalidateCurrentResult() {
+
+    currentRiskData = null;
+
+    // 舊的 assessment id 不再適用於目前畫面上的評鑑內容。
+    currentAssessmentId = null;
+
+    document.getElementById(
+        'resultBox'
+    ).style.display =
+        'none';
+
+    updateSaveButtonState();
+}
+
+
+/* ============================================================
    選擇資產
 ============================================================ */
 
@@ -1200,52 +1322,39 @@ function onAssetChanged() {
         );
 
 
-    if (!asset) {
+    if (asset) {
 
-        return;
+        document.getElementById(
+            'confidentiality'
+        ).value =
+            asset.confidentiality ?? 3;
+
+
+        document.getElementById(
+            'integrity'
+        ).value =
+            asset.integrity ?? 3;
+
+
+        document.getElementById(
+            'availability'
+        ).value =
+            asset.availability ?? 3;
+
+
+        document.getElementById(
+            'legality'
+        ).value =
+            asset.legality ?? 1;
     }
 
 
-    document.getElementById(
-        'confidentiality'
-    ).value =
-        asset.confidentiality ?? 3;
-
-
-    document.getElementById(
-        'integrity'
-    ).value =
-        asset.integrity ?? 3;
-
-
-    document.getElementById(
-        'availability'
-    ).value =
-        asset.availability ?? 3;
-
-
-    document.getElementById(
-        'legality'
-    ).value =
-        asset.legality ?? 1;
-
-
     /*
-     * 每次重新選資產後，
-     * 需要重新計算風險。
+     * 每次重新選資產（含改選回「未選擇」）後，
+     * 舊的評鑑結果都不再適用，需要重新計算風險。
      */
 
-    currentRiskData = null;
-
-    // 換了資產，舊的 assessment id 不再適用。
-    currentAssessmentId = null;
-
-
-    document.getElementById(
-        'resultBox'
-    ).style.display =
-        'none';
-
+    invalidateCurrentResult();
 }
 
 
@@ -1254,6 +1363,26 @@ function onAssetChanged() {
 ============================================================ */
 
 async function calculateRisk() {
+
+    const assetId =
+        document.getElementById(
+            'assetSelect'
+        ).value;
+
+
+    if (!assetId) {
+
+        alert(
+            '請先選擇資產，才能進行風險評鑑。'
+        );
+
+        currentRiskData = null;
+
+        updateSaveButtonState();
+
+        return null;
+    }
+
 
     const payload = {
 
@@ -1408,6 +1537,9 @@ async function calculateRisk() {
 
 
         currentRiskData = data;
+
+        // 確認目前仍有選取資產，才允許啟用儲存按鈕。
+        updateSaveButtonState();
 
 
         return data;
@@ -1567,6 +1699,17 @@ function openAIAdviceModal() {
         'aiRiskLevel'
     ).innerText =
         currentRiskData.risk_level;
+
+
+    // 這份評鑑是否已經儲存成功、拿到合法的 assessment_id。
+    // 沒有的話，使用者仍可以看 AI preview，
+    // 但必須在這裡先講清楚，不要讓他們到 RiskOps 才卡住。
+    document.getElementById(
+        'aiPreviewWarning'
+    ).style.display =
+        currentAssessmentId
+            ? 'none'
+            : 'block';
 
 
     document.getElementById(
@@ -1883,6 +2026,26 @@ async function confirmAIAdvice() {
             !data.success
         ) {
 
+            // Gemini 已經成功產生 advice，只是沒有存進評鑑紀錄。
+            // 不可以當成一般失敗把內容丟掉，也不可以當成成功跳轉，
+            // 必須讓使用者清楚知道「產生了，但沒存到」，並保留文字。
+            if (
+                data.code ===
+                'AI_ADVICE_PERSIST_FAILED'
+            ) {
+
+                error.innerText =
+                    '⚠️ AI 建議已產生，但未成功保存至風險評鑑，' +
+                    '請重新嘗試。\n\n' +
+                    (data.advice || '');
+
+                error.style.display =
+                    'block';
+
+                return;
+
+            }
+
             throw new Error(
                 data.error ||
                 'AI 建議產生失敗'
@@ -2037,11 +2200,14 @@ async function saveAssessment() {
     }
 
 
-    const calcData =
-        await calculateRisk();
+    // 不重新呼叫計算 API。
+    // 一律使用畫面上「1. 計算風險值」已經確認過的結果，
+    // 避免送出的評鑑結果與使用者實際看到的不一致。
+    if (!currentRiskData) {
 
-
-    if (!calcData) {
+        alert(
+            '請先執行「1. 計算風險值」，並確認結果後再儲存。'
+        );
 
         return;
     }
@@ -2060,7 +2226,7 @@ async function saveAssessment() {
             ).value,
 
         impact_score:
-            calcData.impact_score,
+            currentRiskData.impact_score,
 
         likelihood_score:
             parseFloat(
@@ -2077,12 +2243,25 @@ async function saveAssessment() {
             ),
 
         risk_score:
-            calcData.risk_score,
+            currentRiskData.risk_score,
 
         risk_level:
-            calcData.risk_level
+            currentRiskData.risk_level
 
     };
+
+
+    const saveBtn =
+        document.getElementById(
+            'saveAssessmentBtn'
+        );
+
+    const originalLabel =
+        saveBtn.textContent;
+
+    // 送出期間先鎖住按鈕，避免重複送出同一筆評鑑。
+    saveBtn.disabled = true;
+    saveBtn.textContent = '儲存中...';
 
 
     try {
@@ -2124,15 +2303,31 @@ async function saveAssessment() {
         }
 
 
+        // 只信任後端回傳的 top-level assessment_id，
+        // 且必須是合法正整數，否則視為儲存失敗，
+        // 不讓後續 AI Advice / RiskOps 拿到不可用的 id。
+        const assessmentId =
+            Number(
+                data.assessment_id
+            );
+
+        if (
+            !Number.isInteger(
+                assessmentId
+            ) ||
+            assessmentId <= 0
+        ) {
+
+            throw new Error(
+                '伺服器未回傳合法的風險評鑑 ID，請重新嘗試。'
+            );
+        }
+
+
         // 記住這筆評鑑的 assessment id，
         // 讓後續「AI 建議」能精準寫回這一筆紀錄。
         currentAssessmentId =
-            (
-                data.data &&
-                data.data[0] &&
-                data.data[0].id
-            ) ||
-            null;
+            assessmentId;
 
 
         alert(
@@ -2148,11 +2343,19 @@ async function saveAssessment() {
         );
 
 
+        // 儲存失敗時保留 currentRiskData，
+        // 讓使用者可以修正後直接重試，不必重新計算一次。
         alert(
             '❌ 儲存發生錯誤：' +
             error.message
         );
 
+    } finally {
+
+        saveBtn.textContent =
+            originalLabel;
+
+        updateSaveButtonState();
     }
 
 }
@@ -2314,6 +2517,7 @@ async function loadAssessmentHistory() {
 
 fetchAssets();
 loadAssessmentHistory();
+updateSaveButtonState();
 
 </script>
 

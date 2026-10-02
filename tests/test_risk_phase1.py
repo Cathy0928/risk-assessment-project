@@ -106,6 +106,13 @@ class FakeQuery:
     def execute(self):
         if self.operation == "insert":
             inserted = deepcopy(self.insert_payload)
+            # 真實 Supabase 會在 insert 時自動產生 bigint id；
+            # 這個 fake 也要模擬同樣的行為，否則依賴
+            # response.data[0]["id"] 的 contract 測試會失真。
+            inserted.setdefault(
+                "id",
+                len(self.client.records.get(self.table_name, [])) + 1,
+            )
             self.client.records.setdefault(self.table_name, []).append(inserted)
             self.client.queries.append({
                 "table": self.table_name,
@@ -166,6 +173,8 @@ def install_fake_supabase(monkeypatch, assets=None, assessments=None):
     fake = FakeSupabase(assets=assets, assessments=assessments)
     monkeypatch.setattr(risk_routes, "get_supabase_client", lambda: fake)
     monkeypatch.setattr(supabase_db, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(risk_routes, "get_supabase_admin_client", lambda: fake)
+    monkeypatch.setattr(supabase_db, "get_supabase_admin_client", lambda: fake)
     return fake
 
 
