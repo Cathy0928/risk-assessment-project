@@ -103,12 +103,14 @@ def supabase_db(monkeypatch):
         raise AssertionError("A real Supabase client must not be used in tests.")
 
     monkeypatch.setattr(module, "get_supabase_client", reject_real_supabase)
+    monkeypatch.setattr(module, "get_supabase_admin_client", reject_real_supabase)
     return module
 
 
 def install_fake(supabase_db, monkeypatch, records=None):
     fake = FakeSupabase(records)
     monkeypatch.setattr(supabase_db, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(supabase_db, "get_supabase_admin_client", lambda: fake)
     return fake
 
 

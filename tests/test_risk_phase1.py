@@ -1000,3 +1000,26 @@ def test_weight_settings_reports_local_backup_when_supabase_fails(
     assert result["supabase_synced"] is False
     assert result["local_backup_saved"] is True
     assert result["status"] == "local_backup_only"
+
+
+# ================================================================
+# /risk-report 不得再因為 bare url_for() 造成 BuildError。
+#
+# risk_report.html 的 sidebar 曾經用
+# url_for('risk_assessment') / url_for('ai_advice') / url_for('risk_report')
+# 這些 bare endpoint 名稱，但實際的 Flask 路由是註冊在 "risk" 這個
+# blueprint 底下（risk.risk_assessment_page / risk.ai_advice_page /
+# risk.risk_report），所以一渲染就 500。這裡只驗證「頁面能成功
+# render、不再 BuildError」，不驗證報表數據本身 —— 目前仍是
+# hard-coded demo data，不是真實動態報表。
+# ================================================================
+
+def test_risk_report_page_renders_without_build_error(client):
+    login_as(client)
+
+    response = client.get("/risk-report")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "BuildError" not in body
+    assert "風險報表" in body

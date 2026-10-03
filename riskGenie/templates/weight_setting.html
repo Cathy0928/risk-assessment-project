@@ -32,7 +32,13 @@
     </a>
     <button class="menu-btn">AI建議</button>
     <button class="menu-btn">建議報表</button>
+    {% if session.get('role_name') == '系統管理員' %}
+    <a href="{{ url_for('admin_users_page') }}">
+        <button class="menu-btn">帳號管理</button>
+    </a>
+    {% else %}
     <button class="menu-btn">帳號管理</button>
+    {% endif %}
 
     <div class="menu-footer">
 

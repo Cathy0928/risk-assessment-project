@@ -152,6 +152,105 @@ def test_invalidate_current_result_clears_state_and_disables_save():
     assert "updateSaveButtonState();" in body
 
 
+# ===============================================================
+# Calculate stale-response race condition
+#
+# calculateRisk() 送出 request 後，使用者可能在 response 回來前
+# 改了輸入（觸發 invalidateCurrentResult）、或乾脆再按一次「計算」
+# 送出第二個 request。不管哪種情況，一個比較舊的 response 都絕對
+# 不能在比較新的狀態之後，還反過來覆寫畫面、currentRiskData 或
+# Save 按鈕狀態。這裡用一個 generation/sequence token 來擋掉。
+# ===============================================================
+
+
+def test_calculation_generation_token_exists_at_module_scope():
+    source = _template_source()
+
+    assert "let calculationGeneration" in source, (
+        "必須有一個模組層的世代號，讓 calculateRisk() 可以判斷自己"
+        "送出的 request 是否已經過期"
+    )
+
+
+def test_invalidate_current_result_bumps_generation():
+    """使用者改輸入時，必須讓舊 request 的世代號失效，
+    否則它回來時還是會被誤判成『最新的』。
+    """
+    source = _template_source()
+    body = _function_body(source, "invalidateCurrentResult")
+
+    assert "calculationGeneration++" in body
+
+
+def test_calculate_risk_captures_generation_before_fetch():
+    source = _template_source()
+    body = _function_body(source, "calculateRisk")
+
+    assert "++calculationGeneration" in body
+
+    capture_index = body.index("++calculationGeneration")
+    fetch_index = body.index("/api/risk-assessments/calculate")
+
+    assert capture_index < fetch_index, (
+        "calculateRisk() 必須在送出 request 之前，先捕捉當時的"
+        "世代號，才能在 response 回來後判斷是否過期"
+    )
+
+
+def test_calculate_risk_checks_stale_generation_after_await():
+    """await fetch 完成後，必須先確認世代號沒有變，才可以繼續
+    處理這個 response（包含判斷 success/error）。
+    """
+    source = _template_source()
+    body = _function_body(source, "calculateRisk")
+
+    response_json_index = body.index("await response.json();")
+    stale_guard_index = body.index(
+        "requestGeneration !== calculationGeneration"
+    )
+    error_check_index = body.index("!response.ok || !data.success")
+
+    assert response_json_index < stale_guard_index < error_check_index, (
+        "stale generation 的檢查必須在拿到 response 之後、"
+        "判斷 success/error 之前就先擋下來"
+    )
+
+
+def test_calculate_risk_stale_response_does_not_write_current_risk_data():
+    source = _template_source()
+    body = _function_body(source, "calculateRisk")
+
+    stale_guard_index = body.index(
+        "requestGeneration !== calculationGeneration"
+    )
+    stale_return_index = body.index("return null;", stale_guard_index)
+    assign_index = body.index("currentRiskData = data;")
+
+    assert stale_return_index < assign_index, (
+        "stale response 必須在觸碰 currentRiskData 之前就 return，"
+        "不可以用過期的計算結果覆寫目前畫面上的評鑑結果"
+    )
+
+
+def test_calculate_risk_stale_response_does_not_enable_save_button():
+    source = _template_source()
+    body = _function_body(source, "calculateRisk")
+
+    stale_guard_index = body.index(
+        "requestGeneration !== calculationGeneration"
+    )
+    stale_return_index = body.index("return null;", stale_guard_index)
+    assign_index = body.index("currentRiskData = data;")
+    success_save_update_index = body.index(
+        "updateSaveButtonState();", assign_index
+    )
+
+    assert stale_return_index < success_save_update_index, (
+        "stale response 必須在成功分支重新啟用 Save 按鈕之前就"
+        "return，不可以讓過期的計算結果把 Save 按鈕打開"
+    )
+
+
 def test_update_save_button_state_disables_without_asset_or_result():
     source = _template_source()
     body = _function_body(source, "updateSaveButtonState")

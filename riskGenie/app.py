@@ -699,7 +699,6 @@ def create_app(test_config=None):
 
 
         assets = result.data
-        print("首頁資產:", assets)
 
         for asset in assets:
 
@@ -1513,9 +1512,6 @@ def create_app(test_config=None):
                 )
 
 
-                print("停用結果:", update_result.data)
-
-
                 if not update_result.data:
 
                     create_log(
@@ -1537,7 +1533,7 @@ def create_app(test_config=None):
 
 
             except Exception as e:
-                print("刪除錯誤：", e)
+                app.logger.exception("刪除資產失敗：%s", e)
 
                 create_log(
                     action="刪除資產",
@@ -1546,7 +1542,7 @@ def create_app(test_config=None):
                     status="失敗"
                 )
 
-                return f"刪除資產失敗：{e}", 500
+                return "刪除資產失敗，請稍後再試", 500
                         
 
 
@@ -1576,7 +1572,6 @@ def create_app(test_config=None):
 
 
 app = create_app()
-print(app.url_map)
 
 if __name__ == "__main__":
     import os

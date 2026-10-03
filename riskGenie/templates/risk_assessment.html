@@ -512,9 +512,17 @@
     </button>
 
 
+    {% if session.get('role_name') == '系統管理員' %}
+    <a href="{{ url_for('admin_users_page') }}">
+        <button class="menu-btn">
+            帳號管理
+        </button>
+    </a>
+    {% else %}
     <button class="menu-btn">
         帳號管理
     </button>
+    {% endif %}
 
 
     <div class="menu-footer">
@@ -1151,6 +1159,13 @@ let currentRiskData = null;
 // 用來讓「AI 建議」精準寫回這一筆評鑑，而不是猜測「最新一筆」。
 let currentAssessmentId = null;
 
+// 每次輸入變更（invalidateCurrentResult）都會讓這個世代號前進，
+// calculateRisk() 在送出 request 前記住當時的世代號，response 回來
+// 時只要世代號已經不是當時那個，就代表使用者在這次計算期間改過
+// 輸入（或又重新計算過一次），這個回應已經過期，必須整個丟棄，
+// 不能再更新 currentRiskData 或 Save 按鈕狀態。
+let calculationGeneration = 0;
+
 
 /* ============================================================
    載入資產
@@ -1294,6 +1309,10 @@ function invalidateCurrentResult() {
     // 舊的 assessment id 不再適用於目前畫面上的評鑑內容。
     currentAssessmentId = null;
 
+    // 讓任何還在飛行中的 calculateRisk() request 在回來時自動變成
+    // stale，不可以再套用它的結果。
+    calculationGeneration++;
+
     document.getElementById(
         'resultBox'
     ).style.display =
@@ -1384,6 +1403,13 @@ async function calculateRisk() {
     }
 
 
+    // 記住這次 calculate 的世代號。等 request 回來時，只要世代號
+    // 已經前進（代表使用者改過輸入，或是又觸發了一次新的計算），
+    // 這個 response 就是 stale，必須整個丟棄，不能更新畫面。
+    const requestGeneration =
+        ++calculationGeneration;
+
+
     const payload = {
 
         confidentiality:
@@ -1456,6 +1482,15 @@ async function calculateRisk() {
 
         const data =
             await response.json();
+
+
+        // 這個 response 已經過期（使用者在等待期間改過輸入，或
+        // 已經又送出一次新的計算），不可以再用它更新畫面、
+        // currentRiskData 或 Save 按鈕狀態。
+        if (requestGeneration !== calculationGeneration) {
+
+            return null;
+        }
 
 
         if (!response.ok || !data.success) {

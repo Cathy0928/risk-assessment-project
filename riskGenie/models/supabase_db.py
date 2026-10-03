@@ -6,7 +6,10 @@ Description: 數據持久與存取層。
 """
 
 from typing import List, Dict, Any, Optional
-from riskGenie.services.supabase_client import get_supabase_client
+from riskGenie.services.supabase_client import (
+    get_supabase_client,
+    get_supabase_admin_client,
+)
 
 
 class InvalidCompanyContextError(ValueError):
@@ -131,10 +134,15 @@ def save_risk_assessment(
         raise InvalidRiskAssessmentError("asset_id is required.")
     asset_id = _validate_positive_integer(payload["asset_id"], "asset_id")
 
-    supabase = get_supabase_client()
-    _ensure_asset_in_company(supabase, asset_id, company_id)
+    # assets 的 ownership 檢查維持 anon client；risk_assessments 本身
+    # 的寫入改用 server-side privileged client（RLS 不是這裡的租戶
+    # 邊界，company_id 過濾才是）。
+    _ensure_asset_in_company(get_supabase_client(), asset_id, company_id)
 
-    response = supabase.table("risk_assessments").insert(payload).execute()
+    admin_supabase = get_supabase_admin_client()
+    response = (
+        admin_supabase.table("risk_assessments").insert(payload).execute()
+    )
     data = _response_data(response)
     return data if data else []
 
@@ -144,7 +152,8 @@ def get_all_risk_assessments(company_id: int) -> List[Dict[str, Any]]:
     取得指定公司的歷史風險評鑑紀錄。
     """
     company_id = validate_company_id(company_id)
-    supabase = get_supabase_client()
+    # risk_assessments 走 server-side privileged client。
+    supabase = get_supabase_admin_client()
     response = (
         supabase
         .table("risk_assessments")
