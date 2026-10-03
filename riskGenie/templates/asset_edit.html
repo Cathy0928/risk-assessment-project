@@ -26,7 +26,9 @@
         <button class="menu-btn">風險評鑑</button>
         <button class="menu-btn">權重設定</button>
         <button class="menu-btn">AI建議</button>
-        <button class="menu-btn">建議報表</button>
+        <a href="{{ url_for('risk.risk_report') }}">
+            <button class="menu-btn">建議報表</button>
+        </a>
         {% if session.get('role_name') == '系統管理員' %}
         <a href="{{ url_for('admin_users_page') }}">
             <button class="menu-btn">帳號管理</button>

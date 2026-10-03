@@ -15,7 +15,7 @@ from flask import (
 
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ============================================================
@@ -969,7 +969,11 @@ def save_risk_assessment_api():
             "status": "待處理",
 
             "uploaded_by": user_id,
-            "created_at": datetime.now().isoformat()
+            # risk_assessments.created_at is an absolute instant.  Always
+            # include an explicit offset so Postgres/PostgREST cannot treat a
+            # Taiwan wall-clock value as UTC and make the browser add +08:00
+            # a second time when historical assessments are reopened.
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
         result = save_risk_assessment_record(

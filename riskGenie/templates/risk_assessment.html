@@ -507,9 +507,11 @@
     </a>
 
 
-    <button class="menu-btn">
-        建議報表
-    </button>
+    <a href="{{ url_for('risk.risk_report') }}">
+        <button class="menu-btn">
+            建議報表
+        </button>
+    </a>
 
 
     {% if session.get('role_name') == '系統管理員' %}

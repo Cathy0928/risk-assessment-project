@@ -325,9 +325,11 @@
     </a>
 
 
-    <button class="menu-btn">
-        建議報表
-    </button>
+    <a href="{{ url_for('risk.risk_report') }}">
+        <button class="menu-btn">
+            建議報表
+        </button>
+    </a>
 
 
     {% if session.get('role_name') == '系統管理員' %}
@@ -862,7 +864,9 @@
                     "
                 >
 
-                    AI 建議產生時間：
+                    <span id="generatedTimeLabel">
+                        AI 建議產生時間
+                    </span>：
 
                     <span id="generatedTime">
                         -
@@ -994,7 +998,7 @@ async function loadAIAdvice() {
                 status:
                     assessment.status,
 
-                generated_at:
+                assessment_created_at:
                     assessment.created_at,
 
                 risk_data: {
@@ -1185,13 +1189,25 @@ async function loadAIAdvice() {
            時間
         ==================================================== */
 
+        const displayedTimestamp =
+            data.generated_at ||
+            data.assessment_created_at;
+
+
         if (
-            data.generated_at
+            displayedTimestamp
         ) {
+
+            document.getElementById(
+                'generatedTimeLabel'
+            ).innerText =
+                data.generated_at
+                    ? 'AI 建議產生時間'
+                    : '評鑑建立時間';
 
             const date =
                 new Date(
-                    data.generated_at
+                    displayedTimestamp
                 );
 
 

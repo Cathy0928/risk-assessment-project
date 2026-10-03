@@ -18,7 +18,7 @@
             <button type="button" class="menu-btn">弱點管理</button>
             <button type="button" class="menu-btn">威脅管理</button>
             <button type="button" class="menu-btn">風險計算</button>
-            <button type="button" class="menu-btn">風險報表</button>
+            <a href="{{ url_for('risk.risk_report') }}"><button type="button" class="menu-btn">風險報表</button></a>
             <a href="{{ url_for('weight_setting') }}" class="menu-btn">權重設定</a>
             <a href="{{ url_for('admin_users_page') }}" class="menu-btn active" aria-current="page">帳號管理</a>
         </nav>
