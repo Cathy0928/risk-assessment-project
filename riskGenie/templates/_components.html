@@ -1,0 +1,35 @@
+{#- Shared Jinja macros for Design System v2. Usage:
+    {% from "_components.html" import page_header, empty_state, asset_value_badge, asset_type_label %}
+-#}
+
+{% macro page_header(title, desc="") %}
+<div class="page-header">
+    <div>
+        <h1 class="page-header__title">{{ title }}</h1>
+        {% if desc %}<p class="page-header__desc">{{ desc }}</p>{% endif %}
+    </div>
+    {% if caller %}<div class="page-header__actions">{{ caller() }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro empty_state(title, desc="") %}
+<div class="empty">
+    <div class="empty__title">{{ title }}</div>
+    {% if desc %}<p class="empty__desc">{{ desc }}</p>{% endif %}
+    {% if caller %}{{ caller() }}{% endif %}
+</div>
+{% endmacro %}
+
+{# 資產價值為 1–5（C/I/A/L 取最大值）。高價值是重要程度，不是風險或錯誤，不使用 danger 語意。 #}
+{% macro asset_value_badge(value) %}
+{%- set v = value | int(0) -%}
+{%- if v >= 4 -%}<span class="badge badge--primary" title="資產價值 {{ v }} / 5">{{ v }}</span>
+{%- elif v == 3 -%}<span class="badge badge--warning" title="資產價值 {{ v }} / 5">{{ v }}</span>
+{%- elif v > 0 -%}<span class="badge" title="資產價值 {{ v }} / 5">{{ v }}</span>
+{%- else -%}<span class="text-faint">—</span>{%- endif -%}
+{% endmacro %}
+
+{% macro asset_type_label(code) %}
+{%- set labels = {'DA': '資料', 'DC': '文件', 'CM': '通訊', 'HW': '硬體', 'SW': '軟體', 'EV': '設備', 'PE': '人員'} -%}
+{%- if code -%}{{ code }}<span class="text-faint"> {{ labels.get(code, '') }}</span>{%- else -%}<span class="text-faint">—</span>{%- endif -%}
+{% endmacro %}

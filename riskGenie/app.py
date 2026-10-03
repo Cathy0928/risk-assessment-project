@@ -97,6 +97,28 @@ def _single_record(response):
     return data
 
 
+def _format_datetime_display(value):
+    """Presentation-only formatting for DB timestamps (e.g. "2026/01/02 14:30").
+
+    Does not touch the stored value - this only formats what templates render.
+    """
+    if not value:
+        return "—"
+
+    text = str(value).replace("T", " ")
+    for sep in ("+", "Z"):
+        if sep in text:
+            text = text.split(sep)[0]
+    text = text.strip()
+
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            continue
+    return text
+
+
 def _validate_runtime_config(app):
     missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
     if missing and not app.config.get("TESTING"):
@@ -342,6 +364,8 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     _validate_runtime_config(app)
+
+    app.jinja_env.filters["fmt_dt"] = _format_datetime_display
 
     supabase = _LazySupabaseClient()
 
@@ -699,17 +723,6 @@ def create_app(test_config=None):
 
 
         assets = result.data
-
-        for asset in assets:
-
-            if asset.get("created_at"):
-
-                asset["created_at"] = (
-                    asset["created_at"]
-                    .replace("T", " ")
-                    .split("+")[0]
-                )
-
 
         return render_template(
             "index.html",

@@ -55,6 +55,7 @@ ACTIVE_TEMPLATES = (
     "risk_assessment.html",
     "risk_report.html",
     "ai_advice.html",
+    "base.html",
 )
 
 # Templates with no render_template() call site anywhere in the Flask
@@ -125,6 +126,9 @@ def test_active_report_navigation_uses_clickable_risk_report_link(
     template_name,
 ):
     source = (TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
+    if '{% extends "base.html" %}' in source:
+        # 導覽集中在共用 layout，頁面本身不再各自複製 sidebar。
+        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
     report_link = re.compile(
         r"<a\b[^>]*href=\"\{\{\s*url_for\("
         r"'risk\.risk_report'\)\s*\}\}\"[^>]*>"

@@ -1,374 +1,144 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>RiskGenie 資安管理系統－資產總表</title>
+{% extends "base.html" %}
+{% from "_components.html" import page_header, empty_state, asset_value_badge, asset_type_label %}
+{% set crumb_section = "資產管理" %}
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/style.css') }}">
+{% set arg_code = request.args.get('asset_id_code', '') %}
+{% set arg_name = request.args.get('asset_name', '') %}
+{% set arg_type = request.args.get('asset_type', '') %}
+{% set arg_dept = request.args.get('department', '') %}
+{% set arg_owner = request.args.get('risk_owner', '') %}
+{% set arg_value = request.args.get('asset_value', '') %}
+{% set filtered = (arg_code or arg_name or arg_type or arg_dept or arg_owner or arg_value) %}
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/asset_summary.css') }}">
-</head>
+{% block title %}資產總表{% endblock %}
+{% block crumb_page %}資產總表{% endblock %}
 
-<body>
+{% block content %}
 
-<div class="sidebar">
+{% call page_header("資產總表", "查找、檢視並維護啟用中的資訊資產。資產建立後即可進行風險評鑑。") %}
+    <a class="btn" href="{{ url_for('asset_missing') }}">盤點缺漏檢查</a>
+    <a class="btn btn--primary" href="{{ url_for('asset_add') }}">新增資產</a>
+{% endcall %}
 
-    <div class="sidebar-title">
-        👤 RiskGenie
-    </div>
+<div class="panel">
 
-    <a href="{{ url_for('home') }}">
-        <button class="menu-btn">首頁</button>
-    </a>
-
-    <a href="{{ url_for('asset_summary') }}">
-        <button class="menu-btn active">資產總表</button>
-    </a>
-
-    <a href="{{ url_for('risk.risk_assessment_page') }}">
-        <button class="menu-btn">風險評鑑</button>
-    </a>
-
-    <a href="{{ url_for('risk.weight_setting_page') }}">
-        <button class="menu-btn">權重設定</button>
-    </a>
-
-    <button class="menu-btn">AI建議</button>
-
-    <a href="{{ url_for('risk.risk_report') }}">
-        <button class="menu-btn">建議報表</button>
-    </a>
-
-    {% if session.get('role_name') == '系統管理員' %}
-    <a href="{{ url_for('admin_users_page') }}">
-        <button class="menu-btn">帳號管理</button>
-    </a>
-    {% else %}
-    <button class="menu-btn">帳號管理</button>
-    {% endif %}
-
-    <div class="menu-footer">
-
-        <div class="session-user">
-            <strong>{{ session.get("username","使用者") }}</strong><br>
-            {{ session.get("role_name","") }}
+    <form class="filter-bar" method="get" action="{{ url_for('asset_summary') }}" role="search" aria-label="篩選資產">
+        <div class="toolbar">
+            <div class="field field--grow">
+                <label class="label" for="f_asset_name">資產名稱</label>
+                <input class="input" id="f_asset_name" type="text" name="asset_name"
+                       value="{{ arg_name }}" placeholder="輸入名稱關鍵字">
+            </div>
+            <div class="field">
+                <label class="label" for="f_asset_id_code">資產代碼</label>
+                <input class="input" id="f_asset_id_code" type="text" name="asset_id_code"
+                       value="{{ arg_code }}">
+            </div>
+            <div class="field">
+                <label class="label" for="f_asset_type">資產類型</label>
+                <select class="select" id="f_asset_type" name="asset_type">
+                    <option value="">全部</option>
+                    {% for code, label in [('DA', '資料'), ('DC', '文件'), ('CM', '通訊'), ('HW', '硬體'), ('SW', '軟體'), ('EV', '設備'), ('PE', '人員')] %}
+                    <option value="{{ code }}" {% if arg_type == code %}selected{% endif %}>{{ code }}－{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="toolbar__spacer"></div>
+            <button class="btn btn--primary" type="submit">查詢</button>
+            <a class="btn" href="{{ url_for('asset_summary') }}">清除</a>
         </div>
 
-        <form method="post"
-              action="{{ url_for('logout') }}">
+        <details class="filter-more" {% if arg_dept or arg_owner or arg_value %}open{% endif %}>
+            <summary>更多篩選</summary>
+            <div class="toolbar">
+                <div class="field">
+                    <label class="label" for="f_department">權責單位</label>
+                    <input class="input" id="f_department" type="text" name="department" value="{{ arg_dept }}">
+                </div>
+                <div class="field">
+                    <label class="label" for="f_risk_owner">保管單位</label>
+                    <input class="input" id="f_risk_owner" type="text" name="risk_owner" value="{{ arg_owner }}">
+                </div>
+                <div class="field">
+                    <label class="label" for="f_asset_value">資產價值</label>
+                    <select class="select" id="f_asset_value" name="asset_value">
+                        <option value="">全部</option>
+                        {% for i in range(1, 6) %}
+                        <option value="{{ i }}" {% if arg_value == i|string %}selected{% endif %}>{{ i }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </details>
+    </form>
 
-            <button
-                class="menu-btn logout-btn"
-                type="submit">
-
-                登出
-
-            </button>
-
-        </form>
-
+    <div class="chip-row" aria-live="polite">
+        <span>共 <strong class="text-strong">{{ assets|length }}</strong> 筆{% if filtered %}符合條件的{% else %}啟用中的{% endif %}資產</span>
+        {% if filtered %}
+        <a href="{{ url_for('asset_summary') }}">清除所有篩選</a>
+        {% endif %}
     </div>
 
-</div>
-
-<div class="main-content">
-
-<div class="summary-card">
-
-<h2>資產總表</h2>
-
-<div class="search-box">
-
-<form method="get"
-      action="{{ url_for('asset_summary') }}">
-
-<div class="search-item">
-
-<label>資產代碼</label>
-
-<input
-type="text"
-name="asset_id_code"
-value="{{ request.args.get('asset_id_code','') }}">
-
-</div>
-
-<div class="search-item">
-
-<label>資產名稱</label>
-
-<input
-type="text"
-name="asset_name"
-value="{{ request.args.get('asset_name','') }}">
-
-</div>
-
-<div class="search-item">
-
-<label>資產類型</label>
-
-<select name="asset_type">
-
-<option value="">全部</option>
-
-<option value="DA"
-{% if request.args.get("asset_type")=="DA" %}selected{% endif %}>
-DA－資料
-</option>
-
-<option value="DC"
-{% if request.args.get("asset_type")=="DC" %}selected{% endif %}>
-DC－文件
-</option>
-
-<option value="CM"
-{% if request.args.get("asset_type")=="CM" %}selected{% endif %}>
-CM－通訊
-</option>
-
-<option value="HW"
-{% if request.args.get("asset_type")=="HW" %}selected{% endif %}>
-HW－硬體
-</option>
-
-<option value="SW"
-{% if request.args.get("asset_type")=="SW" %}selected{% endif %}>
-SW－軟體
-</option>
-
-<option value="EV"
-{% if request.args.get("asset_type")=="EV" %}selected{% endif %}>
-EV－設備
-</option>
-
-<option value="PE"
-{% if request.args.get("asset_type")=="PE" %}selected{% endif %}>
-PE－人員
-</option>
-
-</select>
+    {% if assets %}
+    <div class="table-wrap">
+        <table class="table" aria-label="資產清單">
+            <thead>
+                <tr>
+                    <th>資產</th>
+                    <th>類型</th>
+                    <th>權責 / 保管</th>
+                    <th>使用單位 / 位置</th>
+                    <th title="機密性 / 完整性 / 可用性 / 合規性">C · I · A · L</th>
+                    <th class="col-num">價值</th>
+                    <th>建立</th>
+                    <th class="col-actions"><span class="visually-hidden">操作</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for asset in assets %}
+                <tr>
+                    <td>
+                        <div class="table__primary">{{ asset.asset_name }}</div>
+                        <div class="table__secondary text-mono">{{ asset.asset_id_code }}</div>
+                        {% if asset.description %}<div class="table__secondary text-truncate cell-clip" title="{{ asset.description }}">{{ asset.description }}</div>{% endif %}
+                    </td>
+                    <td class="text-nowrap">
+                        <div>{{ asset_type_label(asset.asset_type) }}</div>
+                        {% if asset.data_type %}<div class="table__secondary">{{ asset.data_type }}</div>{% endif %}
+                    </td>
+                    <td class="text-nowrap">
+                        <div>{{ asset.department or '—' }}</div>
+                        <div class="table__secondary">保管：{{ asset.risk_owner or '—' }}</div>
+                    </td>
+                    <td class="text-nowrap">
+                        <div>{{ asset.use_department or '—' }}</div>
+                        <div class="table__secondary">{{ asset.location or '—' }}</div>
+                    </td>
+                    <td class="text-mono text-nowrap">{{ asset.confidentiality }} · {{ asset.integrity }} · {{ asset.availability }} · {{ asset.legality }}</td>
+                    <td class="col-num">{{ asset_value_badge(asset.asset_value) }}</td>
+                    <td class="text-nowrap">
+                        <div>{{ (asset.created_at or '')[:10] }}</div>
+                        <div class="table__secondary">{{ asset.upload_user or '—' }}</div>
+                    </td>
+                    <td class="col-actions">
+                        <a class="btn btn--sm btn--ghost" href="{{ url_for('asset_edit', id=asset.id) }}" aria-label="編輯 {{ asset.asset_name }}">編輯</a>
+                        <a class="btn btn--sm btn--ghost text-danger" href="{{ url_for('asset_delete', id=asset.id) }}" aria-label="停用 {{ asset.asset_name }}">停用</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif filtered %}
+    {% call empty_state("找不到符合條件的資產", "調整或清除篩選條件後再試一次。") %}
+        <a class="btn" href="{{ url_for('asset_summary') }}">清除篩選</a>
+    {% endcall %}
+    {% else %}
+    {% call empty_state("還沒有資產", "新增單筆資產，或回到 Dashboard 匯入 Excel 清單。") %}
+        <a class="btn btn--primary" href="{{ url_for('asset_add') }}">新增資產</a>
+    {% endcall %}
+    {% endif %}
 
 </div>
 
-<div class="search-item">
-
-<label>權責單位</label>
-
-<input
-type="text"
-name="department"
-value="{{ request.args.get('department','') }}">
-
-</div>
-
-<div class="search-item">
-
-<label>保管單位</label>
-
-<input
-type="text"
-name="risk_owner"
-value="{{ request.args.get('risk_owner','') }}">
-
-</div>
-
-<div class="search-item">
-
-<label>資產價值</label>
-
-<select name="asset_value">
-
-<option value="">全部</option>
-
-{% for i in range(1,6) %}
-
-<option value="{{ i }}"
-{% if request.args.get("asset_value")==i|string %}
-selected
-{% endif %}>
-{{ i }}
-</option>
-
-{% endfor %}
-
-</select>
-
-</div>
-
-<div class="search-btn-group">
-
-<button
-type="submit"
-class="search-btn">
-
-查詢
-
-</button>
-
-<a href="{{ url_for('asset_summary') }}">
-
-<button
-type="button"
-class="reset-btn">
-
-清除
-
-</button>
-
-</a>
-
-</div>
-
-</form>
-
-</div>
-
-<div class="table-container">
-
-<table class="asset-table">
-
-<thead>
-
-<tr>
-
-<th>操作</th>
-
-<th>資產代碼</th>
-
-<th>資產類型</th>
-
-<th>資料類型</th>
-
-<th>資產名稱</th>
-
-<th>資產描述</th>
-
-<th>權責單位</th>
-
-<th>保管單位</th>
-
-<th>使用單位</th>
-
-<th>放置地點</th>
-
-<th>C</th>
-
-<th>I</th>
-
-<th>A</th>
-
-<th>L</th>
-
-<th>資產價值</th>
-
-<th>上傳者</th>
-
-<th>建立時間</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-{% if assets %}
-
-{% for asset in assets %}
-
-<tr>
-
-<td>
-
-<a href="{{ url_for('asset_edit', id=asset.id) }}">
-✏️
-</a>
-
-&nbsp;
-
-<a href="{{ url_for('asset_delete', id=asset.id) }}">
-🗑️
-</a>
-
-</td>
-
-<td>{{ asset.asset_id_code }}</td>
-
-<td>{{ asset.asset_type }}</td>
-
-<td>{{ asset.data_type }}</td>
-
-<td>{{ asset.asset_name }}</td>
-
-<td>{{ asset.description }}</td>
-
-<td>{{ asset.department }}</td>
-
-<td>{{ asset.risk_owner }}</td>
-
-<td>{{ asset.use_department }}</td>
-
-<td>{{ asset.location }}</td>
-
-<td>{{ asset.confidentiality }}</td>
-
-<td>{{ asset.integrity }}</td>
-
-<td>{{ asset.availability }}</td>
-
-<td>{{ asset.legality }}</td>
-
-<td>{{ asset.asset_value }}</td>
-
-<td>{{ asset.upload_user }}</td>
-
-<td>{{ asset.created_at }}</td>
-
-</tr>
-
-{% endfor %}
-
-{% else %}
-
-<tr>
-
-<td colspan="17"
-style="text-align:center;">
-
-目前沒有任何資產資料
-
-</td>
-
-</tr>
-
-{% endif %}
-
-</tbody>
-
-</table>
-
-</div>
-
-<div class="bottom-action">
-
-<a href="{{ url_for('asset_missing') }}">
-
-<button class="check-btn">
-
-🔍 檢視資產盤點缺漏
-
-</button>
-
-</a>
-
-</div>
-
-</div>
-
-</div>
-
-</body>
-
-</html>
+{% endblock %}
