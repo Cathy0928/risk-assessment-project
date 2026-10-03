@@ -1,116 +1,52 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+{% extends "base.html" %}
+{% from "_components.html" import page_header, empty_state %}
+{% set crumb_section = "資產管理" %}
 
-<head>
+{% block title %}盤點缺漏檢查{% endblock %}
+{% block crumb_page %}盤點缺漏檢查{% endblock %}
 
-    <meta charset="UTF-8">
+{% block content %}
 
-    <title>資產缺漏檢查</title>
+{% call page_header("資產缺漏檢查", "共 " + total|string + " 筆啟用中的資產，其中 " + missing_assets|length|string + " 筆欄位尚未補齊。") %}{% endcall %}
 
-
-    <!-- 使用資產總表 CSS -->
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/asset_summary.css') }}">
-
-</head>
-
-
-<body>
-
-
-<div class="summary-card">
-
-
-<h1 class="page-title">
-    資產缺漏檢查
-</h1>
-
-
-<p>
-    目前資產數量：{{ total }} 筆
-</p>
-
-
-<div class="table-container">
-
-
-<table class="asset-table" style="min-width:900px;">
-
-<thead>
-
-<tr>
-
-<th>資產代碼</th>
-
-<th>資產名稱</th>
-
-<th>缺漏項目</th>
-
-<th>操作</th>
-
-</tr>
-
-</thead>
-
-
-<tbody>
-
-{% for item in missing_assets %}
-
-<tr>
-
-<td>
-{{ item.asset.asset_id_code }}
-</td>
-
-
-<td>
-{{ item.asset.asset_name }}
-</td>
-
-
-<td style="text-align:left;">
-
-{% for error in item.errors %}
-
-<div>
-❌ {{ error }}
+<div class="panel">
+    {% if missing_assets %}
+    <div class="table-wrap">
+        <table class="table" aria-label="缺漏資產清單">
+            <thead>
+                <tr>
+                    <th>資產</th>
+                    <th>缺漏項目</th>
+                    <th class="col-actions"><span class="visually-hidden">操作</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in missing_assets %}
+                <tr>
+                    <td>
+                        <div class="table__primary">{{ item.asset.asset_name or '（未命名資產）' }}</div>
+                        <div class="table__secondary text-mono">{{ item.asset.asset_id_code or '—' }}</div>
+                    </td>
+                    <td>
+                        <div class="inline" style="flex-wrap: wrap; gap: var(--sp-1);">
+                            {% for error in item.errors %}
+                            <span class="badge badge--warning">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="col-actions">
+                        <a class="btn btn--sm" href="{{ url_for('asset_edit', id=item.asset.id) }}">補充資料</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    {% call empty_state("沒有缺漏欄位", "目前所有啟用中的資產都已填妥必要欄位。") %}
+        <a class="btn" href="{{ url_for('asset_summary') }}">查看資產總表</a>
+    {% endcall %}
+    {% endif %}
 </div>
 
-{% endfor %}
-
-</td>
-
-
-<td>
-
-<a href="{{ url_for('asset_edit', id=item.asset.id) }}"
-class="operation-btn edit-btn">
-
-補充資料
-
-</a>
-
-</td>
-
-
-</tr>
-
-
-{% endfor %}
-
-</tbody>
-
-
-</table>
-
-
-</div>
-
-
-</div>
-
-
-</body>
-
-</html>
+{% endblock %}

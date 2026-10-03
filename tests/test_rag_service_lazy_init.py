@@ -20,7 +20,11 @@ def test_import_without_supabase_env_does_not_initialize_clients(monkeypatch):
     monkeypatch.delenv("SUPABASE_URL", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda: False)
+    monkeypatch.setattr(
+        dotenv,
+        "load_dotenv",
+        lambda *_args, **_kwargs: False,
+    )
     calls = []
 
     def reject_initialization(*_args, **_kwargs):

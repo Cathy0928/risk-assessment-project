@@ -1,849 +1,538 @@
+# -*- coding: utf-8 -*-
 """
-CVE synchronization service for RiskGenie.
+CVE Sync Service — orchestrates NVDClient + cve_change_detector to keep
+`cve_documents` up to date from the official NVD API, and records each
+run in `cve_sync_runs`.
 
-Flow:
+Scope / RiskGenie system principles this service must respect:
+    - RiskGenie is an ISMS asset inventory / risk assessment tool, not a
+      vulnerability scanner. This service only maintains public CVE
+      reference data (`cve_documents`) and its own run history
+      (`cve_sync_runs`). It never touches `assets` or
+      `risk_assessments`, and never claims any asset "has" a
+      vulnerability just because a CVE was synced.
+    - After document sync, it invokes cve_embedding.py. That updater
+      compares public.cve_embeddings.content_hash against cve_documents,
+      skips unchanged content, and retries stale/missing vectors.
+    - It does not run itself on a schedule and does not call the real
+      Gemini API. Callers (a CLI entrypoint, a cron job, a future admin
+      action) decide when to call `run()`; `nvd_client` is injected so
+      tests never hit the real NVD API.
 
-    Last successful sync
-            ↓
-        NVD API
-            ↓
-      normalize_cve()
-            ↓
-       compare hash
-        ↓       ↓
-    unchanged   new/changed
-                  ↓
-            cve_documents
-                  ↓
-          cve_embedding.py
-                  ↓
-            cve_embeddings
-                  ↓
-            cve_sync_runs
+EMBEDDING TABLE STATUS:
+    Confirmed via a read-only pg_class query: the real table is plural
+    public.cve_embeddings (OID 34266); singular "cve_embedding" does not
+    exist. The existing search_cve RPC already reads "FROM cve_embeddings",
+    so it was never broken — an earlier screenshot-based guess had this
+    backwards and has been corrected throughout this module and
+    cve_embedding.py. The index cve_embeddings_cve_id_unique is known to
+    exist on this table; its exact definition is not yet independently
+    confirmed.
 
-Important scope:
-- Maintains public vulnerability intelligence only.
-- Maintains CVE RAG documents and embeddings.
-- Does NOT determine whether an asset is vulnerable.
-- Does NOT modify asset risk scores.
-- Does NOT run a vulnerability scanner.
+SCHEMA CONFIRMATION STATUS:
+    - cve_documents: cve_id, description, cvss_score, severity, cwe,
+      reference_urls (all pre-existing, used by import_cve.py) plus
+      content_hash, source_modified_at, synced_at, published_at
+      (confirmed present via a read-only Supabase check). Column TYPES
+      were not independently re-verified beyond "they exist" — this
+      service writes what it believes are reasonable values (ISO-8601
+      strings for the three date/time fields) but the exact expected
+      type (text vs timestamptz) has not been confirmed.
+    - cve_sync_runs count/error columns use the confirmed contract:
+      inserted_count, updated_count, unchanged_count,
+      embedding_updated_count, error_count, error_message.
+      query_start_date/query_end_date remain pending read-only schema
+      confirmation and are required for safe durable checkpointing.
+      Run-history write failures are fatal and explicitly reported.
 """
 
-import os
-import time
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
 
-from dotenv import load_dotenv
-
-from riskGenie.services.nvd_client import fetch_cves_since
-from riskGenie.services.import_cve import normalize_cve
-from riskGenie.services.cve_embedding import refresh_embeddings
-from riskGenie.services.supabase_client import get_supabase_admin_client
-
-
-load_dotenv()
+try:
+    from .cve_change_detector import compute_content_hash, normalize_cve
+    from . import cve_embedding
+except ImportError:
+    from cve_change_detector import compute_content_hash, normalize_cve
+    import cve_embedding
 
 
-# ---------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------
-
-DB_BATCH_SIZE = 100
-
-# When there is no previous sync history but existing
-# cve_documents exist, use the newest source_modified_at
-# as the synchronization starting point.
-
-# If the database is completely empty, perform an initial
-# lookback instead of requesting an unlimited NVD date range.
-INITIAL_SYNC_DAYS = int(
-    os.getenv("CVE_INITIAL_SYNC_DAYS", "120")
-)
-
-# Small overlap prevents boundary misses.
-SYNC_OVERLAP_MINUTES = int(
-    os.getenv("CVE_SYNC_OVERLAP_MINUTES", "2")
-)
+logger = logging.getLogger(__name__)
 
 
-supabase = get_supabase_admin_client()
+DOCUMENTS_TABLE = "cve_documents"
+SYNC_RUNS_TABLE = "cve_sync_runs"
+
+# Confirmed cve_sync_runs columns.
+STATUS_RUNNING = "running"
+STATUS_SUCCESS = "success"
+STATUS_FAILED = "failed"
+
+# No prior successful run to resume from -> don't default to "everything
+# NVD has ever published"; bound the first-ever run to a fixed lookback.
+DEFAULT_LOOKBACK = timedelta(days=7)
+
+DOCUMENTS_PAGE_SIZE = 1000
 
 
-# ---------------------------------------------------------
-# Time helpers
-# ---------------------------------------------------------
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _to_iso(dt: datetime) -> str:
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-
-    return dt.astimezone(timezone.utc).isoformat()
-
-
-# ---------------------------------------------------------
-# Sync history
-# ---------------------------------------------------------
-
-def _get_last_successful_sync() -> Optional[datetime]:
-    """
-    Return completed_at of the most recent successful sync.
-    """
-
-    response = (
-        supabase
-        .table("cve_sync_runs")
-        .select("completed_at")
-        .eq("status", "success")
-        .order("completed_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-
-    rows = response.data or []
-
-    if not rows:
-        return None
-
-    value = rows[0].get("completed_at")
-
-    if not value:
-        return None
-
-    return datetime.fromisoformat(
-        value.replace("Z", "+00:00")
+def _default_embedding_updater(supabase, cve_ids, max_embeddings):
+    """Run the existing hash-aware embedding updater on this DB client."""
+    return cve_embedding.main(
+        supabase=supabase,
+        cve_ids=cve_ids,
+        max_embeddings=max_embeddings,
     )
 
 
-def _get_latest_existing_cve_modified_at() -> Optional[datetime]:
+class SyncRunResult:
+    """Plain summary of one sync run. Has no dependency on the exact
+    cve_sync_runs schema, so it (and the classification logic that
+    fills it in) is fully unit-testable without a real database."""
+
+    def __init__(self, window_start, window_end):
+        self.window_start = window_start
+        self.window_end = window_end
+        self.started_at = None
+        self.completed_at = None
+        self.status = STATUS_RUNNING
+        self.inserted_count = 0
+        self.updated_count = 0
+        self.unchanged_count = 0
+        self.embedding_updated_count = 0
+        self.error_count = 0
+        self.errors = []
+        self.complete = True
+
+    def to_dict(self):
+        return {
+            "window_start": self.window_start,
+            "window_end": self.window_end,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "status": self.status,
+            "inserted_count": self.inserted_count,
+            "updated_count": self.updated_count,
+            "unchanged_count": self.unchanged_count,
+            "embedding_updated_count": self.embedding_updated_count,
+            "error_count": self.error_count,
+            "errors": list(self.errors),
+            "complete": self.complete,
+        }
+
+
+class SyncRunRecordError(RuntimeError):
+    """Raised when cve_sync_runs cannot record the sync truthfully."""
+
+
+class CVESyncService:
     """
-    Migration-friendly fallback.
+    `nvd_client` must expose `.iter_cves(last_mod_start_date=, \
+    last_mod_end_date=, max_pages=)` (see nvd_client.NVDClient).
 
-    If CVE data already exists from the old manual import process
-    but cve_sync_runs has no successful record yet, continue from
-    the newest source_modified_at instead of downloading everything.
-    """
+    `get_supabase_client` is a zero-arg callable returning a Supabase
+    client, matching the lazy-init pattern already used throughout this
+    codebase (riskGenie.services.supabase_client.get_supabase_client) —
+    injected rather than imported directly so tests can supply a fake.
 
-    response = (
-        supabase
-        .table("cve_documents")
-        .select("source_modified_at")
-        .not_.is_("source_modified_at", "null")
-        .order("source_modified_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-
-    rows = response.data or []
-
-    if not rows:
-        return None
-
-    value = rows[0].get("source_modified_at")
-
-    if not value:
-        return None
-
-    return datetime.fromisoformat(
-        value.replace("Z", "+00:00")
-    )
-
-
-def _create_sync_run() -> Optional[int]:
-    """
-    Create a running sync history record.
-    """
-
-    response = (
-        supabase
-        .table("cve_sync_runs")
-        .insert({
-            "started_at": _to_iso(_utc_now()),
-            "status": "running",
-        })
-        .execute()
-    )
-
-    rows = response.data or []
-
-    if not rows:
-        return None
-
-    return rows[0].get("id")
-
-
-def _finish_sync_run(
-    run_id: Optional[int],
-    status: str,
-    stats: Dict[str, int],
-    error_message: Optional[str] = None,
-) -> None:
-    """
-    Update sync history after completion.
+    `now` is injectable so tests get deterministic timestamps instead
+    of depending on wall-clock time.
     """
 
-    if run_id is None:
-        return
-
-    payload = {
-        "completed_at": _to_iso(_utc_now()),
-        "status": status,
-        "fetched_count": stats.get("fetched", 0),
-        "inserted_count": stats.get("inserted", 0),
-        "updated_count": stats.get("updated", 0),
-        "unchanged_count": stats.get("unchanged", 0),
-        "embedding_updated_count": stats.get(
-            "embedding_updated",
-            0,
-        ),
-        "error_count": stats.get("error", 0),
-    }
-
-    if error_message:
-        payload["error_message"] = error_message[:5000]
-
-    (
-        supabase
-        .table("cve_sync_runs")
-        .update(payload)
-        .eq("id", run_id)
-        .execute()
-    )
-
-
-# ---------------------------------------------------------
-# Existing CVE data
-# ---------------------------------------------------------
-
-def _get_existing_documents(
-    cve_ids: List[str],
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Load existing CVE document hashes.
-
-    Query in chunks so a very large CVE list does not become
-    one unnecessarily large request.
-    """
-
-    result: Dict[str, Dict[str, Any]] = {}
-
-    unique_ids = list(dict.fromkeys(
-        cve_id
-        for cve_id in cve_ids
-        if cve_id
-    ))
-
-    for start in range(
-        0,
-        len(unique_ids),
-        DB_BATCH_SIZE,
+    def __init__(
+        self,
+        nvd_client,
+        get_supabase_client,
+        now=None,
+        documents_table=DOCUMENTS_TABLE,
+        sync_runs_table=SYNC_RUNS_TABLE,
+        documents_page_size=DOCUMENTS_PAGE_SIZE,
+        default_lookback=DEFAULT_LOOKBACK,
+        embedding_updater=None,
+        execution_guard=None,
     ):
-        chunk = unique_ids[
-            start:start + DB_BATCH_SIZE
-        ]
+        self._nvd_client = nvd_client
+        self._get_supabase_client = get_supabase_client
+        self._now = now or (lambda: datetime.now(timezone.utc))
+        self._documents_table = documents_table
+        self._sync_runs_table = sync_runs_table
+        self._documents_page_size = documents_page_size
+        self._default_lookback = default_lookback
+        self._embedding_updater = (
+            embedding_updater or _default_embedding_updater
+        )
+        self._execution_guard = execution_guard or (lambda: None)
+
+    # ------------------------------------------------------------
+    # Public entrypoint
+    # ------------------------------------------------------------
+
+    def run(
+        self,
+        last_mod_start_date=None,
+        last_mod_end_date=None,
+        max_pages=None,
+        max_embeddings=None,
+    ):
+        supabase = self._get_supabase_client()
+
+        window_start, window_end = self._resolve_window(
+            supabase,
+            last_mod_start_date,
+            last_mod_end_date,
+        )
+
+        result = SyncRunResult(window_start, window_end)
+        result.started_at = self._iso_now()
+
+        run_row_id = self._start_run_record(supabase, result)
+
+        try:
+            existing_hash_by_id, existing_ids = self._load_existing_documents(
+                supabase
+            )
+
+            processed_cve_ids = []
+            seen_cve_ids = set()
+            for raw_cve in self._nvd_client.iter_cves(
+                last_mod_start_date=window_start,
+                last_mod_end_date=window_end,
+                max_pages=max_pages,
+            ):
+                # An overlap window or unstable upstream page can repeat a
+                # CVE. Process it once so counts and writes remain accurate.
+                raw_cve_id = (
+                    raw_cve.get("id") if isinstance(raw_cve, dict) else None
+                )
+                if raw_cve_id and raw_cve_id in seen_cve_ids:
+                    continue
+                if raw_cve_id:
+                    seen_cve_ids.add(raw_cve_id)
+
+                # Checked before every write so a lease lost mid-run (e.g.
+                # stolen after expiry) stops this process before it can
+                # write again, instead of only being caught at the end.
+                self._execution_guard()
+                processed_cve_id = self._process_one(
+                    supabase,
+                    raw_cve,
+                    existing_hash_by_id,
+                    existing_ids,
+                    result,
+                )
+                if processed_cve_id:
+                    processed_cve_ids.append(processed_cve_id)
+
+            if not getattr(self._nvd_client, "last_iteration_complete", True):
+                result.complete = False
+                result.errors.append(
+                    "NVD page limit reached before the query window completed"
+                )
+
+            self._execution_guard()
+            embedding_result = self._embedding_updater(
+                supabase,
+                processed_cve_ids,
+                max_embeddings,
+            ) or {}
+            result.embedding_updated_count = int(
+                embedding_result.get("success_count", 0)
+            )
+            embedding_error_count = int(
+                embedding_result.get("error_count", 0)
+            )
+            if embedding_error_count:
+                result.error_count += embedding_error_count
+                result.errors.append(
+                    f"Embedding update failed for "
+                    f"{embedding_error_count} CVE(s)"
+                )
+
+            if not embedding_result.get("complete", True):
+                result.complete = False
+                result.errors.append(
+                    "Embedding limit reached before all changed CVEs were processed"
+                )
+
+            self._execution_guard()
+
+            result.status = (
+                STATUS_SUCCESS
+                if result.error_count == 0 and result.complete
+                else STATUS_FAILED
+            )
+
+        except Exception as exc:
+            logger.exception("CVE sync run failed: %s", exc)
+            result.status = STATUS_FAILED
+            result.errors.append(str(exc))
+
+        finally:
+            try:
+                self._execution_guard()
+            except Exception as exc:
+                result.status = STATUS_FAILED
+                result.complete = False
+                result.errors.append(str(exc))
+            result.completed_at = self._iso_now()
+            self._finish_run_record(supabase, run_row_id, result)
+
+        return result
+
+    # ------------------------------------------------------------
+    # Window resolution / checkpointing
+    # ------------------------------------------------------------
+
+    def _resolve_window(self, supabase, last_mod_start_date, last_mod_end_date):
+        if last_mod_start_date:
+            if not last_mod_end_date:
+                raise ValueError(
+                    "last_mod_end_date is required when an explicit "
+                    "last_mod_start_date is provided"
+                )
+            return last_mod_start_date, last_mod_end_date
+
+        end = last_mod_end_date or self._iso_now()
+
+        checkpoint = self._load_last_successful_query_end(supabase)
+        if checkpoint:
+            return checkpoint, end
+
+        raise ValueError(
+            "No successful checkpoint exists; explicit last_mod_start_date "
+            "and last_mod_end_date are required for the first sync"
+        )
+
+    def _load_last_successful_query_end(self, supabase):
+        """Return the last fully processed NVD query-window end.
+
+        Completion time is deliberately not a checkpoint: the sync may
+        finish well after the NVD interval ended. Only successful runs
+        (which necessarily have zero item/page errors) may advance it.
+        """
 
         response = (
             supabase
-            .table("cve_documents")
-            .select(
-                "cve_id,content_hash"
-            )
-            .in_("cve_id", chunk)
+            .table(self._sync_runs_table)
+            .select("query_end_date, status")
+            .eq("status", STATUS_SUCCESS)
+            .order("query_end_date", desc=True)
+            .limit(1)
             .execute()
         )
 
-        for row in response.data or []:
-            result[row["cve_id"]] = row
+        rows = response.data or []
+        if not rows:
+            return None
 
-    return result
+        return rows[0].get("query_end_date")
 
+    # ------------------------------------------------------------
+    # cve_documents read/write
+    # ------------------------------------------------------------
 
-# ---------------------------------------------------------
-# CVE database writing
-# ---------------------------------------------------------
+    def _load_existing_documents(self, supabase):
+        """Returns (hash_by_id, id_set).
 
-def _build_document_row(
-    cve: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Convert normalized CVE into cve_documents row.
-    """
+        A cve_id present in id_set with hash_by_id[cve_id] is None means
+        "this row already exists, but content_hash was never backfilled"
+        (legacy data written before this column existed by the original
+        import_cve.py) — distinct from a cve_id genuinely never seen
+        before. Both cases still need their content written/refreshed,
+        but they are counted separately (backfilled vs new) so
+        cve_sync_runs's counts stay honest.
+        """
 
-    row = {
-        "cve_id": cve["cve_id"],
-        "description": cve.get("description"),
-        "cvss_score": cve.get("cvss_score"),
-        "severity": cve.get("severity"),
-        "cwe": cve.get("cwe"),
-        "reference_urls": cve.get("reference_urls", []),
-        "content_hash": cve.get("content_hash"),
-        "source_modified_at": cve.get(
-            "source_modified_at"
-        ),
-        "published_at": cve.get(
-            "published_at"
-        ),
-        "synced_at": _to_iso(_utc_now()),
-    }
+        hash_by_id = {}
+        id_set = set()
+        start = 0
 
-    return row
+        while True:
+            end = start + self._documents_page_size - 1
 
-
-def _save_documents(
-    rows: List[Dict[str, Any]],
-) -> Tuple[int, int, List[str]]:
-    """
-    Save CVE documents.
-
-    Returns:
-        inserted_count,
-        updated_count,
-        failed_cve_ids
-    """
-
-    if not rows:
-        return 0, 0, []
-
-    inserted_count = 0
-    updated_count = 0
-    failed_ids: List[str] = []
-
-    # We already know which records are new/changed before this
-    # function is called, so split them into DB batches.
-    for start in range(
-        0,
-        len(rows),
-        DB_BATCH_SIZE,
-    ):
-        batch = rows[
-            start:start + DB_BATCH_SIZE
-        ]
-
-        try:
-            (
+            response = (
                 supabase
-                .table("cve_documents")
-                .upsert(
-                    batch,
-                    on_conflict="cve_id",
-                )
+                .table(self._documents_table)
+                .select("cve_id, content_hash")
+                .range(start, end)
                 .execute()
             )
 
-            # The caller already classified these rows,
-            # therefore count is calculated outside.
-            continue
+            rows = response.data or []
 
-        except Exception as exc:
-            print(
-                f"[CVE Sync] Batch upsert failed: {exc}"
-            )
+            for row in rows:
+                cve_id = row.get("cve_id")
+                if not cve_id:
+                    continue
+                id_set.add(cve_id)
+                hash_by_id[cve_id] = row.get("content_hash")
 
-            # Fallback to individual records.
-            for row in batch:
-                try:
-                    (
-                        supabase
-                        .table("cve_documents")
-                        .upsert(
-                            row,
-                            on_conflict="cve_id",
-                        )
-                        .execute()
-                    )
+            if len(rows) < self._documents_page_size:
+                break
 
-                except Exception as row_exc:
-                    cve_id = row.get(
-                        "cve_id",
-                        "UNKNOWN",
-                    )
+            start += self._documents_page_size
 
-                    print(
-                        f"[CVE Sync] Failed to save "
-                        f"{cve_id}: {row_exc}"
-                    )
+        return hash_by_id, id_set
 
-                    failed_ids.append(cve_id)
-
-    return (
-        inserted_count,
-        updated_count,
-        failed_ids,
-    )
-
-
-# ---------------------------------------------------------
-# Normalize and compare
-# ---------------------------------------------------------
-
-def _prepare_cves(
-    vulnerabilities: List[Dict[str, Any]],
-    existing: Dict[str, Dict[str, Any]],
-    stats: Dict[str, int],
-) -> Tuple[
-    List[Dict[str, Any]],
-    List[str],
-]:
-    """
-    Normalize raw NVD records and determine which CVEs
-    need database / embedding updates.
-    """
-
-    rows_to_save: List[Dict[str, Any]] = []
-    changed_ids: List[str] = []
-
-    seen_ids = set()
-
-    for item in vulnerabilities:
-
+    def _process_one(
+        self, supabase, raw_cve, existing_hash_by_id, existing_ids, result
+    ):
+        cve_id = None
         try:
-            cve = normalize_cve(item)
+            normalized = normalize_cve(raw_cve)
+            if not isinstance(normalized, dict):
+                raise ValueError("CVE normalization returned a non-object")
 
-            cve_id = cve.get("cve_id")
-
+            cve_id = normalized.get("cve_id")
             if not cve_id:
-                raise ValueError(
-                    "Normalized CVE has no cve_id."
-                )
+                raise ValueError("Normalized CVE has no cve_id")
 
-            # NVD pagination / overlap can potentially give us
-            # the same CVE more than once.
-            if cve_id in seen_ids:
-                continue
+            if str(normalized.get("vuln_status") or "").upper() == "REJECTED":
+                self._remove_rejected_cve(supabase, cve_id)
+                if cve_id in existing_ids:
+                    result.updated_count += 1
+                    existing_ids.discard(cve_id)
+                    existing_hash_by_id.pop(cve_id, None)
+                return None
 
-            seen_ids.add(cve_id)
+            new_hash = compute_content_hash(normalized)
+            existed_before = cve_id in existing_ids
+            existing_hash = existing_hash_by_id.get(cve_id)
 
-            existing_row = existing.get(cve_id)
+            if existed_before and existing_hash == new_hash:
+                result.unchanged_count += 1
+                return cve_id
 
-            if existing_row is None:
-                rows_to_save.append(
-                    _build_document_row(cve)
-                )
+            row = self._to_document_row(normalized, new_hash)
 
-                changed_ids.append(cve_id)
+            # Upsert only — never delete-then-insert. If this fails, the
+            # previous row (if any) is left exactly as it was.
+            supabase.table(self._documents_table).upsert(
+                row,
+                on_conflict="cve_id",
+            ).execute()
 
-                stats["inserted"] += 1
+            existing_ids.add(cve_id)
+            existing_hash_by_id[cve_id] = new_hash
 
-                continue
+            if not existed_before:
+                result.inserted_count += 1
+            elif existing_hash is None:
+                result.updated_count += 1
+            else:
+                result.updated_count += 1
 
-            old_hash = existing_row.get(
-                "content_hash"
-            )
-
-            new_hash = cve.get(
-                "content_hash"
-            )
-
-            if old_hash == new_hash:
-                stats["unchanged"] += 1
-                continue
-
-            rows_to_save.append(
-                _build_document_row(cve)
-            )
-
-            changed_ids.append(cve_id)
-
-            stats["updated"] += 1
+            return cve_id
 
         except Exception as exc:
-            stats["error"] += 1
+            label = cve_id or "<unknown>"
+            logger.exception("Failed to sync %s: %s", label, exc)
+            result.error_count += 1
+            result.errors.append(f"{label}: {exc}")
+            # Deliberately not re-raised: one bad CVE must not abort the
+            # whole run, and its existing row (if any) stays untouched.
+            return None
 
-            print(
-                f"[CVE Sync] Failed to normalize CVE: "
-                f"{exc}"
-            )
-
-    return rows_to_save, changed_ids
-
-
-# ---------------------------------------------------------
-# Main synchronization
-# ---------------------------------------------------------
-
-def run_sync() -> Dict[str, Any]:
-    """
-    Execute one complete CVE synchronization.
-
-    Returns a summary dictionary.
-    """
-
-    stats = {
-        "fetched": 0,
-        "inserted": 0,
-        "updated": 0,
-        "unchanged": 0,
-        "embedding_updated": 0,
-        "error": 0,
-    }
-
-    run_id = None
-
-    try:
-        # -------------------------------------------------
-        # 1. Start sync history
-        # -------------------------------------------------
-
-        run_id = _create_sync_run()
-
-        print(
-            "\n========================================"
+    def _remove_rejected_cve(self, supabase, cve_id):
+        # Remove the vector first so a rejected identifier cannot remain
+        # searchable if the following document cleanup needs a retry.
+        (
+            supabase
+            .table(cve_embedding.EMBEDDING_TABLE)
+            .delete()
+            .eq("cve_id", cve_id)
+            .execute()
         )
-        print(
-            " RiskGenie CVE Synchronization"
-        )
-        print(
-            "========================================"
+        (
+            supabase
+            .table(self._documents_table)
+            .delete()
+            .eq("cve_id", cve_id)
+            .execute()
         )
 
-        # -------------------------------------------------
-        # 2. Determine synchronization starting point
-        # -------------------------------------------------
-
-        last_success = _get_last_successful_sync()
-
-        if last_success:
-            modified_start = last_success
-
-            print(
-                "[CVE Sync] "
-                f"Last successful sync: "
-                f"{_to_iso(last_success)}"
-            )
-
-        else:
-            # Existing manually imported CVE data?
-            existing_modified = (
-                _get_latest_existing_cve_modified_at()
-            )
-
-            if existing_modified:
-                modified_start = existing_modified
-
-                print(
-                    "[CVE Sync] No previous sync history."
-                )
-
-                print(
-                    "[CVE Sync] Using latest existing "
-                    "CVE modified time: "
-                    f"{_to_iso(existing_modified)}"
-                )
-
-            else:
-                # Completely empty database.
-                modified_start = (
-                    _utc_now()
-                    - timedelta(
-                        days=INITIAL_SYNC_DAYS
-                    )
-                )
-
-                print(
-                    "[CVE Sync] No existing CVE data."
-                )
-
-                print(
-                    "[CVE Sync] Initial lookback: "
-                    f"{INITIAL_SYNC_DAYS} days."
-                )
-
-        # -------------------------------------------------
-        # 3. Fetch changed CVEs from NVD
-        # -------------------------------------------------
-
-        print(
-            "[CVE Sync] Fetching NVD CVEs..."
-        )
-
-        vulnerabilities = fetch_cves_since(
-            modified_start=modified_start,
-            overlap_minutes=SYNC_OVERLAP_MINUTES,
-        )
-
-        stats["fetched"] = len(
-            vulnerabilities
-        )
-
-        print(
-            "[CVE Sync] NVD returned "
-            f"{len(vulnerabilities)} records."
-        )
-
-        # NVD returned nothing.
-        if not vulnerabilities:
-            _finish_sync_run(
-                run_id=run_id,
-                status="success",
-                stats=stats,
-            )
-
-            print(
-                "[CVE Sync] Nothing to update."
-            )
-
-            return {
-                "status": "success",
-                **stats,
-            }
-
-        # -------------------------------------------------
-        # 4. Collect CVE IDs
-        # -------------------------------------------------
-
-        raw_ids: List[str] = []
-
-        for item in vulnerabilities:
-            try:
-                cve_data = item.get(
-                    "cve",
-                    {}
-                )
-
-                cve_id = cve_data.get(
-                    "id"
-                )
-
-                if cve_id:
-                    raw_ids.append(cve_id)
-
-            except Exception:
-                stats["error"] += 1
-
-        raw_ids = list(
-            dict.fromkeys(raw_ids)
-        )
-
-        # -------------------------------------------------
-        # 5. Load current DB hashes
-        # -------------------------------------------------
-
-        print(
-            "[CVE Sync] Loading existing "
-            "CVE hashes..."
-        )
-
-        existing = _get_existing_documents(
-            raw_ids
-        )
-
-        print(
-            "[CVE Sync] Existing records found: "
-            f"{len(existing)}"
-        )
-
-        # -------------------------------------------------
-        # 6. Normalize + compare hash
-        # -------------------------------------------------
-
-        rows_to_save, changed_ids = (
-            _prepare_cves(
-                vulnerabilities,
-                existing,
-                stats,
-            )
-        )
-
-        print(
-            "[CVE Sync] New: "
-            f"{stats['inserted']}"
-        )
-
-        print(
-            "[CVE Sync] Changed: "
-            f"{stats['updated']}"
-        )
-
-        print(
-            "[CVE Sync] Unchanged: "
-            f"{stats['unchanged']}"
-        )
-
-        # -------------------------------------------------
-        # 7. Save changed/new CVE documents
-        # -------------------------------------------------
-
-        failed_save_ids: List[str] = []
-
-        if rows_to_save:
-            print(
-                "[CVE Sync] Saving "
-                f"{len(rows_to_save)} CVE documents..."
-            )
-
-            (
-                _,
-                _,
-                failed_save_ids,
-            ) = _save_documents(
-                rows_to_save
-            )
-
-            if failed_save_ids:
-                stats["error"] += len(
-                    failed_save_ids
-                )
-
-                failed_set = set(
-                    failed_save_ids
-                )
-
-                changed_ids = [
-                    cve_id
-                    for cve_id in changed_ids
-                    if cve_id not in failed_set
-                ]
-
-        # -------------------------------------------------
-        # 8. Refresh only changed/new embeddings
-        # -------------------------------------------------
-
-        if changed_ids:
-            print(
-                "[CVE Sync] Refreshing embeddings "
-                f"for {len(changed_ids)} CVEs..."
-            )
-
-            embedding_result = (
-                refresh_embeddings(
-                    changed_ids
-                )
-            )
-
-            stats[
-                "embedding_updated"
-            ] = embedding_result.get(
-                "success",
-                0,
-            )
-
-            embedding_errors = (
-                embedding_result.get(
-                    "error",
-                    0,
-                )
-            )
-
-            stats["error"] += embedding_errors
-
-            print(
-                "[CVE Sync] Embedding result: "
-                f"{embedding_result}"
-            )
-
-        else:
-            print(
-                "[CVE Sync] No embedding update required."
-            )
-
-        # -------------------------------------------------
-        # 9. Determine final status
-        # -------------------------------------------------
-
-        if stats["error"] > 0:
-            final_status = "partial"
-        else:
-            final_status = "success"
-
-        _finish_sync_run(
-            run_id=run_id,
-            status=final_status,
-            stats=stats,
-        )
-
-        print(
-            "\n========================================"
-        )
-        print(
-            " CVE Synchronization Finished"
-        )
-        print(
-            "========================================"
-        )
-
-        print(
-            f"Status: {final_status}"
-        )
-
-        print(
-            f"Fetched: {stats['fetched']}"
-        )
-
-        print(
-            f"Inserted: {stats['inserted']}"
-        )
-
-        print(
-            f"Updated: {stats['updated']}"
-        )
-
-        print(
-            f"Unchanged: {stats['unchanged']}"
-        )
-
-        print(
-            f"Embeddings updated: "
-            f"{stats['embedding_updated']}"
-        )
-
-        print(
-            f"Errors: {stats['error']}"
-        )
-
+    def _to_document_row(self, normalized, content_hash):
         return {
-            "status": final_status,
-            **stats,
+            "cve_id": normalized["cve_id"],
+            "description": normalized["description"],
+            "cvss_score": normalized["cvss_score"],
+            "severity": normalized["severity"],
+            "cwe": normalized["cwe"],
+            "reference_urls": normalized["reference_urls"],
+            "content_hash": content_hash,
+            "source_modified_at": normalized["last_modified"],
+            "published_at": normalized["published"],
+            "synced_at": self._iso_now(),
         }
 
-    except Exception as exc:
-        # -------------------------------------------------
-        # NVD failure / unexpected failure
-        #
-        # IMPORTANT:
-        # Existing CVE data is NOT deleted.
-        # -------------------------------------------------
+    # ------------------------------------------------------------
+    # cve_sync_runs read/write
+    #
+    # Run history is part of the sync contract. Failures are surfaced
+    # explicitly so callers cannot mistake an unrecorded run for success.
+    # ------------------------------------------------------------
 
-        error_message = str(exc)
+    def _start_run_record(self, supabase, result):
+        try:
+            response = (
+                supabase
+                .table(self._sync_runs_table)
+                .insert(self._build_run_record(result))
+                .execute()
+            )
+        except Exception as exc:
+            raise SyncRunRecordError(
+                "Could not create cve_sync_runs record"
+            ) from exc
 
-        stats["error"] += 1
+        rows = response.data or []
+        run_row_id = rows[0].get("id") if rows else None
+        if run_row_id is None:
+            raise SyncRunRecordError(
+                "cve_sync_runs insert returned no record id"
+            )
+        return run_row_id
 
-        print(
-            "\n[CVE Sync] FATAL ERROR:"
-        )
+    def _finish_run_record(self, supabase, run_row_id, result):
+        try:
+            response = (
+                supabase
+                .table(self._sync_runs_table)
+                .update(self._build_run_record(result))
+                .eq("id", run_row_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise SyncRunRecordError(
+                f"Could not finalize cve_sync_runs record {run_row_id}"
+            ) from exc
 
-        print(
-            error_message
-        )
+        if not (response.data or []):
+            raise SyncRunRecordError(
+                f"cve_sync_runs record {run_row_id} was not finalized"
+            )
 
-        _finish_sync_run(
-            run_id=run_id,
-            status="failed",
-            stats=stats,
-            error_message=error_message,
-        )
-
+    def _build_run_record(self, result):
         return {
-            "status": "failed",
-            **stats,
-            "error_message": error_message,
+            "started_at": result.started_at,
+            "completed_at": result.completed_at,
+            "status": result.status,
+            "query_start_date": result.window_start,
+            "query_end_date": result.window_end,
+            "inserted_count": result.inserted_count,
+            "updated_count": result.updated_count,
+            "unchanged_count": result.unchanged_count,
+            "embedding_updated_count": result.embedding_updated_count,
+            "error_count": result.error_count,
+            "error_message": "\n".join(result.errors) or None,
         }
 
+    # ------------------------------------------------------------
+    # Time helpers
+    # ------------------------------------------------------------
 
-def main() -> None:
-    """
-    Command-line entry point.
-    """
+    def _iso_now(self):
+        return self._iso(self._now())
 
-    result = run_sync()
-
-    # Make CLI failure visible to schedulers / Task Scheduler.
-    if result.get("status") == "failed":
-        raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()
+    @staticmethod
+    def _iso(dt):
+        return dt.isoformat().replace("+00:00", "Z")

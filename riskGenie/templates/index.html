@@ -1,209 +1,171 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RiskGenie 資安管理系統</title>
+{% extends "base.html" %}
+{% from "_components.html" import page_header, empty_state, asset_value_badge, asset_type_label %}
+{% set crumb_section = "總覽" %}
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/style.css') }}">
+{% block title %}Dashboard{% endblock %}
+{% block crumb_page %}Dashboard{% endblock %}
 
-    <link rel="stylesheet"
-          href="{{ url_for('static', filename='css/index.css') }}">
-</head>
+{% block content %}
 
-<body>
+{% call page_header("Dashboard", "先處理需要你決定的事，再看整體狀態。") %}
+    <a class="btn" href="{{ url_for('asset_add') }}">新增資產</a>
+    <a class="btn btn--primary" href="{{ url_for('risk.risk_assessment_page') }}">開始風險評鑑</a>
+{% endcall %}
 
-<div class="sidebar">
+<div id="dashAlert" class="alert-stack hidden" role="alert"></div>
 
-    <div class="sidebar-title">
-        RiskGenie
-    </div>
-
-    <a href="{{ url_for('home') }}">
-        <button class="menu-btn active">首 頁</button>
-    </a>
-
-    <a href="{{ url_for('asset_summary') }}">
-        <button class="menu-btn">資產總表</button>
-    </a>
-
-    <a href="{{ url_for('risk.risk_assessment_page') }}">
-        <button class="menu-btn">風險評鑑</button>
-    </a>
-
-    <a href="{{ url_for('risk.weight_setting_page') }}">
-        <button class="menu-btn">權重設定</button>
-    </a>
-
-    <a href="{{ url_for('risk.ai_advice_page') }}">
-    <button class="menu-btn">AI建議</button>
-    </a>
-    <button class="menu-btn">建議報表</button>
-    <button class="menu-btn">帳號管理</button>
-
-    <div class="menu-footer">
-
-        <div class="session-user">
-            <strong>{{ session.get("username","使用者") }}</strong><br>
-            {{ session.get("role_name","") }}
+<div class="section">
+    <div class="next-step" id="nextStep">
+        <div>
+            <div class="next-step__label">建議下一步</div>
+            <div class="next-step__text" id="nextStepText">正在整理待辦事項…</div>
         </div>
-
-        <form action="{{ url_for('logout') }}" method="post">
-            <button class="menu-btn logout-btn" type="submit">
-                登出
-            </button>
-        </form>
-
+        <a class="btn btn--primary hidden" id="nextStepLink" href="#"></a>
     </div>
-
 </div>
 
-<div class="main-content">
-
-    <div class="content-wrapper">
-
-        <div class="upload-box">
-
-            <h2>上傳資產清單 (.xlsx)</h2>
-
-            <form action="{{ url_for('upload_excel') }}"
-                  method="post"
-                  enctype="multipart/form-data">
-
-                <input
-                    type="file"
-                    name="file"
-                    accept=".xlsx"
-                    required>
-
-                <br><br>
-
-                <div class="btn-group" style="display: flex; justify-content: center; align-items: center; gap: 15px;">
-
-                    <button class="add-btn" type="submit" style="white-space: nowrap;">
-                        匯入資產
-                    </button>
-
-                    <a href="{{ url_for('download_template') }}">
-                        <button class="add-btn" type="button" style="white-space: nowrap;">
-                            📄 下載資產匯入範本
-                        </button>
-                    </a>
-
-                </div>
-
-            </form>
-
+<div class="section">
+    <div class="stat-strip" id="stats">
+        <div class="stat">
+            <div class="stat__label">資產總數</div>
+            <div class="stat__value" id="statAssets">—</div>
+            <div class="stat__note" id="statAssetsNote">啟用中的資產</div>
         </div>
-
-        <div class="table-header">
-
-            <h3 class="table-title">
-                最近新增資產
-            </h3>
-
-            <a href="{{ url_for('asset_add') }}">
-                <button class="add-btn">
-                    ＋ 新增資產
-                </button>
-            </a>
-
+        <div class="stat">
+            <div class="stat__label">已評鑑資產</div>
+            <div class="stat__value" id="statAssessed">—</div>
+            <div class="stat__note" id="statAssessedNote">至少有一筆評鑑</div>
         </div>
+        <div class="stat">
+            <div class="stat__label">高風險</div>
+            <div class="stat__value" id="statHigh">—</div>
+            <div class="stat__note">高 / 極高（最新一次評鑑）</div>
+        </div>
+        <div class="stat">
+            <div class="stat__label">未完成處置</div>
+            <div class="stat__value" id="statOpen">—</div>
+            <div class="stat__note">待處理 / 處理中 / 待確認</div>
+        </div>
+        <div class="stat">
+            <div class="stat__label">處置逾期</div>
+            <div class="stat__value" id="statOverdue">—</div>
+            <div class="stat__note">已過期限且未完成</div>
+        </div>
+    </div>
+</div>
 
-        <div class="table-container">
+<div class="section grid grid--main-aside"
+     id="riskPanels"
+     data-assessments-url="{{ url_for('risk.get_historical_assessments_api') }}"
+     data-assets-url="{{ url_for('risk.get_assessment_assets_api') }}"
+     data-detail-url="{{ url_for('risk.ai_advice_page') }}"
+     data-assess-url="{{ url_for('risk.risk_assessment_page') }}"
+     data-add-url="{{ url_for('asset_add') }}"
+     data-report-url="{{ url_for('risk.risk_report') }}">
 
-            <table class="asset-table-simple">
+    <div>
+        <div class="section__header">
+            <h2 class="section__title">待處理風險</h2>
+            <span class="section__hint" id="pendingHint"></span>
+        </div>
+        <div class="panel">
+            <div class="table-wrap">
+                <table class="table" aria-label="待處理風險">
+                    <thead>
+                        <tr>
+                            <th>資產</th>
+                            <th>風險等級</th>
+                            <th class="col-num">分數</th>
+                            <th>處置狀態</th>
+                            <th>期限</th>
+                            <th class="col-actions"><span class="visually-hidden">操作</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="pendingBody">
+                        <tr><td colspan="6" class="text-muted">載入中…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
+    <div>
+        <div class="section__header">
+            <h2 class="section__title">近期處置期限</h2>
+            <span class="section__hint">14 天內與已逾期</span>
+        </div>
+        <div class="panel" id="dueList">
+            <div class="empty"><p class="empty__desc">載入中…</p></div>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section__header">
+        <h2 class="section__title">最近新增資產</h2>
+        <a href="{{ url_for('asset_summary') }}">查看資產總表</a>
+    </div>
+    <div class="panel">
+        {% if assets %}
+        <div class="table-wrap">
+            <table class="table" aria-label="最近新增資產">
                 <thead>
-
-                <tr>
-
-                    <th>資產代碼</th>
-                    <th>資產類型</th>
-                    <th>資料類型</th>
-                    <th>資產名稱</th>
-                    <th>資產描述</th>
-                    <th>權責單位</th>
-                    <th>保管單位</th>
-                    <th>使用單位</th>
-                    <th>放置地點</th>
-                    <th>C</th>
-                    <th>I</th>
-                    <th>A</th>
-                    <th>L</th>
-                    <th>資產價值</th>
-                    <th>上傳者</th>
-                    <th>建立時間</th>
-
-                </tr>
-
+                    <tr>
+                        <th>資產</th>
+                        <th>類型</th>
+                        <th>權責單位</th>
+                        <th>保管單位</th>
+                        <th class="col-num">資產價值</th>
+                        <th>建立時間</th>
+                    </tr>
                 </thead>
-
                 <tbody>
-
-                {% for asset in assets %}
-
-                <tr>
-
-                    <td>{{ asset.asset_id_code }}</td>
-
-                    <td>{{ asset.asset_type }}</td>
-
-                    <td>{{ asset.data_type }}</td>
-
-                    <td>{{ asset.asset_name }}</td>
-
-                    <td>{{ asset.description }}</td>
-
-                    <td>{{ asset.department }}</td>
-
-                    <td>{{ asset.risk_owner }}</td>
-
-                    <td>{{ asset.use_department }}</td>
-
-                    <td>{{ asset.location }}</td>
-
-                    <td>{{ asset.confidentiality }}</td>
-
-                    <td>{{ asset.integrity }}</td>
-
-                    <td>{{ asset.availability }}</td>
-
-                    <td>{{ asset.legality }}</td>
-
-                    <td>{{ asset.asset_value }}</td>
-
-                    <td>{{ asset.upload_user }}</td>
-
-                    <td>{{ asset.created_at }}</td>
-
-                </tr>
-
-                {% else %}
-
-                <tr>
-
-                    <td colspan="16">
-
-                        目前尚無資產資料
-
-                    </td>
-
-                </tr>
-
-                {% endfor %}
-
+                    {% for asset in assets[:8] %}
+                    <tr>
+                        <td>
+                            <div class="table__primary">{{ asset.asset_name }}</div>
+                            <div class="table__secondary text-mono">{{ asset.asset_id_code }}</div>
+                        </td>
+                        <td>{{ asset_type_label(asset.asset_type) }}</td>
+                        <td>{{ asset.department or '—' }}</td>
+                        <td>{{ asset.risk_owner or '—' }}</td>
+                        <td class="col-num">{{ asset_value_badge(asset.asset_value) }}</td>
+                        <td class="text-muted text-nowrap">{{ asset.created_at | fmt_dt }}</td>
+                    </tr>
+                    {% endfor %}
                 </tbody>
-
             </table>
-
         </div>
-
+        {% else %}
+        {% call empty_state("還沒有資產", "從新增單筆資產或匯入 Excel 開始，之後才能進行風險評鑑。") %}
+            <a class="btn btn--primary" href="{{ url_for('asset_add') }}">新增資產</a>
+        {% endcall %}
+        {% endif %}
     </div>
-
 </div>
 
-</body>
+<div class="section">
+    <div class="section__header">
+        <h2 class="section__title">批次匯入資產</h2>
+    </div>
+    <div class="panel">
+        <form class="panel__body toolbar"
+              action="{{ url_for('upload_excel') }}"
+              method="post"
+              enctype="multipart/form-data">
+            <div class="field">
+                <label class="label" for="assetFile">資產清單 (.xlsx)</label>
+                <input class="input" id="assetFile" type="file" name="file" accept=".xlsx" required>
+                <span class="help">請使用資產匯入範本的欄位格式。</span>
+            </div>
+            <button class="btn btn--primary" type="submit">匯入資產</button>
+            <a class="btn" href="{{ url_for('download_template') }}">下載匯入範本</a>
+        </form>
+    </div>
+</div>
 
-</html>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

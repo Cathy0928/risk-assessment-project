@@ -2,6 +2,7 @@ import importlib
 import io
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -255,6 +256,30 @@ def test_home_and_summary_only_show_current_company_assets(app_module, monkeypat
     assert all(("company_id", 7) in query["filters"] for query in asset_selects)
 
 
+def test_home_does_not_print_asset_data_to_terminal(
+    app_module, monkeypatch, capsys
+):
+    """home() 曾經有 print("首頁資產:", assets)，會把使用者的資產
+    資料（可能含敏感欄位）整批印到 server 終端機/log。這裡鎖住
+    "不會再發生"，而不是鎖住某個特定的 print 字串。
+    """
+    fake = FakeSupabase(
+        [asset_record(1, 7, "A-001", "Sensitive Asset Name")]
+    )
+    client = create_client(app_module, monkeypatch, fake)
+    login_as(client, company_id=7)
+
+    capsys.readouterr()  # 清掉 import/reload 階段可能留下的輸出
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+
+    captured = capsys.readouterr()
+    assert "Sensitive Asset Name" not in captured.out
+    assert captured.out == ""
+
+
 def test_asset_add_uses_session_company_id_and_ignores_client_company_id(
     app_module, monkeypatch
 ):
@@ -445,3 +470,74 @@ def test_delete_audit_failure_does_not_roll_back_successful_soft_delete(
     )
     assert ("id", 1) in update_query["filters"]
     assert ("company_id", 7) in update_query["filters"]
+
+
+def test_delete_failure_does_not_leak_exception_details_to_response(
+    app_module, monkeypatch
+):
+    """asset_delete() 曾經用 return f"刪除資產失敗：{e}", 500 把底層
+    exception 字串直接回給瀏覽器。這裡模擬一個帶敏感字串的例外，
+    確認：
+    - HTTP response 絕對不能出現那段敏感字串
+    - response 要有一句一般化的錯誤訊息
+    - status 仍然是 500
+    """
+    sensitive_detail = (
+        'column "status" of relation "assets" does not exist: '
+        "postgres://admin:s3cr3t-password@db.internal:5432/prod"
+    )
+
+    class _RaisingUpdateQuery:
+        def __init__(self, record):
+            self._record = record
+            self._filters = []
+            self._is_update = False
+
+        def select(self, *_args, **_kwargs):
+            return self
+
+        def eq(self, field, value):
+            self._filters.append((field, value))
+            return self
+
+        def limit(self, _value):
+            return self
+
+        def update(self, _payload):
+            self._is_update = True
+            return self
+
+        def execute(self):
+            if self._is_update:
+                raise RuntimeError(sensitive_detail)
+
+            matches = all(
+                self._record.get(field) == value
+                for field, value in self._filters
+            )
+            return SimpleNamespace(data=[self._record] if matches else [])
+
+    class _RaisingFakeSupabase:
+        def __init__(self, record):
+            self._record = record
+
+        def table(self, _name):
+            return _RaisingUpdateQuery(self._record)
+
+    record = asset_record(1, 7, "A-001", "Company A Asset")
+    fake = _RaisingFakeSupabase(record)
+    monkeypatch.setattr(app_module, "get_supabase_client", lambda: fake)
+
+    app = app_module.create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
+    client = app.test_client()
+    login_as(client, company_id=7)
+
+    response = client.post("/asset_delete/1")
+
+    assert response.status_code == 500
+
+    body = response.get_data(as_text=True)
+    assert sensitive_detail not in body
+    assert "s3cr3t-password" not in body
+    assert "刪除資產失敗" in body
+    assert "請稍後再試" in body

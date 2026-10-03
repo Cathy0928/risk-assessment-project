@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+{#-
+  RiskGenie shared layout (Design System v2)
+
+  子頁面只需要：
+    {% extends "base.html" %}
+    {% set crumb_section = "分類" %}               (選填，放在 extends 之後、block 之外)
+    {% block title %}頁名{% endblock %}
+    {% block crumb_page %}頁名{% endblock %}
+    {% block content %}...{% endblock %}
+    {% block scripts %}...{% endblock %}          (選填)
+
+  Sidebar 與 active state 一律在這裡處理（依 request.endpoint 判斷），
+  新增或調整導覽只需要改這一個檔案。
+-#}
+{% set ep = request.endpoint or '' %}
+{% set is_admin = session.get('role_name') == '系統管理員' %}
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RiskGenie{% endblock %} · RiskGenie 評評理</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/design-system.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+
+    <nav class="sidebar" id="sidebar" aria-label="主選單">
+        <a class="sidebar__brand" href="{{ url_for('home') }}">
+            RiskGenie 評評理
+            <small>資訊資產與風險治理工作台</small>
+        </a>
+
+        <div class="nav-group">
+            <a class="nav-link" href="{{ url_for('home') }}"{% if ep == 'home' %} aria-current="page"{% endif %}>總覽</a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group__label">資產管理</div>
+            <a class="nav-link" href="{{ url_for('asset_summary') }}"{% if ep in ('asset_summary', 'asset_edit', 'asset_delete') %} aria-current="page"{% endif %}>資產總表</a>
+            <a class="nav-link" href="{{ url_for('asset_add') }}"{% if ep == 'asset_add' %} aria-current="page"{% endif %}>新增資產</a>
+            <a class="nav-link" href="{{ url_for('asset_missing') }}"{% if ep == 'asset_missing' %} aria-current="page"{% endif %}>盤點缺漏檢查</a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group__label">風險管理</div>
+            <a class="nav-link" href="{{ url_for('risk.risk_assessment_page') }}"{% if ep == 'risk.risk_assessment_page' %} aria-current="page"{% endif %}>風險評鑑</a>
+            <a class="nav-link" href="{{ url_for('risk.ai_advice_page') }}"{% if ep == 'risk.ai_advice_page' %} aria-current="page"{% endif %}>AI 分析與處置</a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group__label">治理與報表</div>
+            <a class="nav-link" href="{{ url_for('risk.risk_report') }}"{% if ep == 'risk.risk_report' %} aria-current="page"{% endif %}>風險報表</a>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-group__label">系統設定</div>
+            <a class="nav-link" href="{{ url_for('risk.weight_setting_page') }}"{% if ep in ('risk.weight_setting_page', 'weight_setting') %} aria-current="page"{% endif %}>權重設定</a>
+            {% if is_admin %}
+            <a class="nav-link" href="{{ url_for('admin_users_page') }}"{% if ep == 'admin_users_page' %} aria-current="page"{% endif %}>帳號管理</a>
+            {% endif %}
+        </div>
+
+        <div class="sidebar__footer">
+            <div class="user-chip">
+                <div class="user-chip__name">{{ session.get('username', '使用者') }}</div>
+                <div class="user-chip__role">{{ session.get('role_name', '') }}</div>
+            </div>
+            <form action="{{ url_for('logout') }}" method="post">
+                <button class="btn btn--ghost btn--sm" type="submit">登出</button>
+            </form>
+        </div>
+    </nav>
+
+    <div class="app-main">
+        <header class="topbar">
+            <button class="btn btn--ghost btn--sm topbar__menu" type="button"
+                    id="navToggle" aria-controls="sidebar" aria-expanded="false">選單</button>
+            <div class="breadcrumb">
+                {% if crumb_section %}{{ crumb_section }}<span class="breadcrumb__sep">/</span>{% endif %}<strong>{% block crumb_page %}{% endblock %}</strong>
+            </div>
+        </header>
+
+        <main class="page" id="main">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="alert-stack" role="status">
+                {% for category, message in messages %}
+                <div class="alert alert--{{ category if category in ('info', 'success', 'warning', 'danger') else 'info' }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+
+<script>
+(function () {
+    var toggle = document.getElementById('navToggle');
+    function setOpen(open) {
+        document.body.classList.toggle('nav-open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    toggle.addEventListener('click', function () {
+        setOpen(!document.body.classList.contains('nav-open'));
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { setOpen(false); }
+    });
+    document.getElementById('main').addEventListener('click', function () {
+        if (document.body.classList.contains('nav-open')) { setOpen(false); }
+    });
+})();
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -152,6 +152,7 @@
 
     function createTextInput(value) {
         var input = document.createElement("input");
+        input.className = "input";
         input.type = "text";
         input.name = "username";
         input.value = value;
@@ -162,6 +163,7 @@
 
     function createRoleSelect(currentRoleId) {
         var select = document.createElement("select");
+        select.className = "select";
         select.name = "role_id";
         select.required = true;
         select.setAttribute("aria-label", "角色");
@@ -179,13 +181,12 @@
 
     function createStatusBadge(isActive) {
         var badge = document.createElement("span");
-        badge.classList.add("status-badge");
+        badge.classList.add("badge");
 
         if (isActive === true) {
-            badge.classList.add("status-active");
+            badge.classList.add("badge--success");
             badge.textContent = "啟用";
         } else {
-            badge.classList.add("status-disabled");
             badge.textContent = "已停用";
         }
 
@@ -194,27 +195,27 @@
 
     function createActions(user, isEditing) {
         var container = document.createElement("div");
-        container.className = "row-actions";
+        container.className = "inline";
 
         if (isEditing) {
             container.appendChild(createActionButton("儲存", function (event) {
                 saveUser(user, event.currentTarget.closest("tr"));
-            }));
+            }, "btn--sm"));
             container.appendChild(createActionButton("取消", function () {
                 state.editingUserId = null;
                 renderUsers();
-            }));
+            }, "btn--sm btn--ghost"));
             return container;
         }
 
         container.appendChild(createActionButton("編輯", function () {
             state.editingUserId = String(user.id);
             renderUsers();
-        }));
+        }, "btn--sm btn--ghost"));
 
         var disableButton = createActionButton("停用", function (event) {
             disableUser(user, event.currentTarget.closest("tr"));
-        }, "danger");
+        }, "btn--sm btn--ghost text-danger");
         disableButton.disabled = user.is_active !== true;
         container.appendChild(disableButton);
         return container;
@@ -223,7 +224,7 @@
     function createActionButton(label, handler, extraClass) {
         var button = document.createElement("button");
         button.type = "button";
-        button.className = "table-action" + (extraClass ? " " + extraClass : "");
+        button.className = "btn" + (extraClass ? " " + extraClass : "");
         button.textContent = label;
         button.addEventListener("click", handler);
         return button;
@@ -341,16 +342,21 @@
         });
     }
 
+    var MESSAGE_TONE = {
+        success: "alert--success",
+        error: "alert--danger"
+    };
+
     function showMessage(message, type) {
         elements.message.textContent = message;
-        elements.message.className = "page-message " + type;
+        elements.message.className = "alert " + (MESSAGE_TONE[type] || "alert--info");
         elements.message.hidden = false;
     }
 
     function clearMessage() {
         elements.message.hidden = true;
         elements.message.textContent = "";
-        elements.message.className = "page-message";
+        elements.message.className = "alert alert--info";
     }
 
     async function apiRequest(url, options) {

@@ -54,6 +54,7 @@ class FakeQuery:
         self.limit_value = None
         self.operation = "select"
         self.insert_payload = None
+        self.update_payload = None
 
     def select(self, fields):
         self.operation = "select"
@@ -63,6 +64,11 @@ class FakeQuery:
     def insert(self, payload):
         self.operation = "insert"
         self.insert_payload = deepcopy(payload)
+        return self
+
+    def update(self, payload):
+        self.operation = "update"
+        self.update_payload = deepcopy(payload)
         return self
 
     def eq(self, field, value):
@@ -80,9 +86,33 @@ class FakeQuery:
     def order(self, *_args, **_kwargs):
         return self
 
+    def _matches(self, record):
+        for operation, field, value in self.filters:
+            if operation == "eq":
+                if record.get(field) != value:
+                    return False
+            else:
+                if record.get(field) not in value:
+                    return False
+        return True
+
+    def _matching_records(self):
+        return [
+            record.copy()
+            for record in self.client.records.get(self.table_name, [])
+            if self._matches(record)
+        ]
+
     def execute(self):
         if self.operation == "insert":
             inserted = deepcopy(self.insert_payload)
+            # 真實 Supabase 會在 insert 時自動產生 bigint id；
+            # 這個 fake 也要模擬同樣的行為，否則依賴
+            # response.data[0]["id"] 的 contract 測試會失真。
+            inserted.setdefault(
+                "id",
+                len(self.client.records.get(self.table_name, [])) + 1,
+            )
             self.client.records.setdefault(self.table_name, []).append(inserted)
             self.client.queries.append({
                 "table": self.table_name,
@@ -92,24 +122,24 @@ class FakeQuery:
             })
             return SimpleNamespace(data=[inserted])
 
-        records = [
-            record.copy()
-            for record in self.client.records.get(self.table_name, [])
-        ]
+        if self.operation == "update":
+            # Mutate the actual stored records (not copies) so later
+            # selects observe the update, matching real Supabase semantics.
+            updated = []
+            for record in self.client.records.get(self.table_name, []):
+                if self._matches(record):
+                    record.update(deepcopy(self.update_payload))
+                    updated.append(record.copy())
 
-        for operation, field, value in self.filters:
-            if operation == "eq":
-                records = [
-                    record
-                    for record in records
-                    if record.get(field) == value
-                ]
-            else:
-                records = [
-                    record
-                    for record in records
-                    if record.get(field) in value
-                ]
+            self.client.queries.append({
+                "table": self.table_name,
+                "filters": list(self.filters),
+                "operation": "update",
+                "payload": deepcopy(self.update_payload),
+            })
+            return SimpleNamespace(data=updated)
+
+        records = self._matching_records()
 
         if self.limit_value is not None:
             records = records[:self.limit_value]
@@ -143,6 +173,8 @@ def install_fake_supabase(monkeypatch, assets=None, assessments=None):
     fake = FakeSupabase(assets=assets, assessments=assessments)
     monkeypatch.setattr(risk_routes, "get_supabase_client", lambda: fake)
     monkeypatch.setattr(supabase_db, "get_supabase_client", lambda: fake)
+    monkeypatch.setattr(risk_routes, "get_supabase_admin_client", lambda: fake)
+    monkeypatch.setattr(supabase_db, "get_supabase_admin_client", lambda: fake)
     return fake
 
 
@@ -821,12 +853,24 @@ def test_ai_advice_exception_does_not_leak_details(client, monkeypatch):
     assert "https://" not in str(body)
 
 
-def test_ai_advice_uses_session_company_and_returns_advice(
+def test_ai_advice_without_assessment_id_uses_session_company_for_preview(
     client, monkeypatch
 ):
     from riskGenie.services import risk_routes
 
-    fake = install_fake_supabase(monkeypatch, assets=[asset_record()])
+    fake = install_fake_supabase(
+        monkeypatch,
+        assets=[asset_record()],
+        assessments=[
+            {
+                "id": 9001,
+                "asset_id": 701,
+                "company_id": 7,
+                "status": "待處理",
+                "created_at": "2026-01-01T00:00:00",
+            }
+        ],
+    )
     monkeypatch.setattr(risk_routes, "is_gemini_configured", lambda: True)
     monkeypatch.setattr(
         risk_routes,
@@ -838,9 +882,16 @@ def test_ai_advice_uses_session_company_and_returns_advice(
     response = client.post("/api/ai-advice", json=valid_ai_payload())
 
     assert response.status_code == 200
-    assert response.get_json()["advice"] == "請優先修補公開服務。"
+    body = response.get_json()
+    assert body["advice"] == "請優先修補公開服務。"
+    assert body["assessment_id"] is None
     assert ("eq", "company_id", 7) in fake.queries[0]["filters"]
     assert ("eq", "is_deleted", False) in fake.queries[0]["filters"]
+
+    # 沒有 assessment_id 時只預覽，不得改動既有評鑑。
+    stored = fake.records["risk_assessments"][0]
+    assert stored.get("ai_suggestion") is None
+    assert stored["status"] == "待處理"
 
 
 def test_export_only_contains_current_company_data(client, monkeypatch):
@@ -949,3 +1000,26 @@ def test_weight_settings_reports_local_backup_when_supabase_fails(
     assert result["supabase_synced"] is False
     assert result["local_backup_saved"] is True
     assert result["status"] == "local_backup_only"
+
+
+# ================================================================
+# /risk-report 不得再因為 bare url_for() 造成 BuildError。
+#
+# risk_report.html 的 sidebar 曾經用
+# url_for('risk_assessment') / url_for('ai_advice') / url_for('risk_report')
+# 這些 bare endpoint 名稱，但實際的 Flask 路由是註冊在 "risk" 這個
+# blueprint 底下（risk.risk_assessment_page / risk.ai_advice_page /
+# risk.risk_report），所以一渲染就 500。這裡只驗證「頁面能成功
+# render、不再 BuildError」，不驗證報表數據本身 —— 目前仍是
+# hard-coded demo data，不是真實動態報表。
+# ================================================================
+
+def test_risk_report_page_renders_without_build_error(client):
+    login_as(client)
+
+    response = client.get("/risk-report")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "BuildError" not in body
+    assert "風險報表" in body

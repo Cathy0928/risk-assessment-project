@@ -15,7 +15,7 @@ from flask import (
 
 import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # ============================================================
@@ -38,7 +38,10 @@ try:
 
     from .rag_service import generate_advice, is_gemini_configured
     from .report import export_report
-    from .supabase_client import get_supabase_client
+    from .supabase_client import (
+        get_supabase_client,
+        get_supabase_admin_client,
+    )
 
 except ImportError:
     from models.supabase_db import (
@@ -56,11 +59,20 @@ except ImportError:
 
     from services.rag_service import generate_advice, is_gemini_configured
     from services.report import export_report
-    from services.supabase_client import get_supabase_client
+    from services.supabase_client import (
+        get_supabase_client,
+        get_supabase_admin_client,
+    )
 
 
 # ============================================================
 # Blueprint
+#
+# risk_assessments 的業務資料存取使用 server-side privileged
+# client（get_supabase_admin_client）。RLS 不是這些 route 的
+# tenant authorization boundary；company_id + ownership 檢查
+# 才是唯一的租戶隔離防線，絕對不可以因為用了 privileged client
+# 就省略。
 # ============================================================
 
 risk_bp = Blueprint("risk", __name__)
@@ -87,6 +99,54 @@ def _json_error(message, code, status_code):
         "error": message,
         "code": code
     }), status_code
+
+
+def _update_returned_expected_row(
+    updated_data,
+    expected_id,
+    expected_company_id
+):
+    """驗證 UPDATE 的回應確實包含「那一筆」資料列。
+
+    Supabase/Postgrest 的 UPDATE 在 RLS 擋下寫入、或 WHERE 條件沒有
+    任何資料列相符時不會丟例外 —— 只會回傳 `data=[]`。這裡把「真的
+    有一筆被更新、且是我們要的那一筆」的判斷集中成一個函式，讓
+    RiskOps 與 AI Advice 兩條 UPDATE route 共用同一套嚴格條件，避免
+    把 0 rows 誤判成功。
+    """
+
+    if not isinstance(updated_data, list):
+        return False
+
+    if len(updated_data) != 1:
+        return False
+
+    row = updated_data[0]
+
+    if not isinstance(row, dict):
+        return False
+
+    row_id = row.get("id")
+
+    try:
+        if isinstance(row_id, bool):
+            return False
+
+        row_id = int(row_id)
+
+        if row_id <= 0:
+            return False
+
+    except (TypeError, ValueError):
+        return False
+
+    if row_id != expected_id:
+        return False
+
+    if "company_id" in row and row.get("company_id") != expected_company_id:
+        return False
+
+    return True
 
 
 # ============================================================
@@ -774,6 +834,38 @@ def calculate_risk_api():
 # model 會以 (asset_id, company_id) 驗證資產並寫入 company_id。
 # ============================================================
 
+def _extract_assessment_id(result):
+    """Return a positive int assessment id from an insert result, or None.
+
+    前端必須拿到一個「合法、可用於後續 AI Advice / RiskOps 的
+    assessment_id」。只要 insert 回應不是預期結構（空陣列、
+    第一筆沒有 id、id 不是合法正整數），都視為儲存失敗，
+    不讓前端拿到假的/無法使用的 id。
+    """
+    if not isinstance(result, list) or not result:
+        return None
+
+    first_row = result[0]
+
+    if not isinstance(first_row, dict):
+        return None
+
+    raw_id = first_row.get("id")
+
+    if raw_id is None or isinstance(raw_id, bool):
+        return None
+
+    try:
+        assessment_id = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+
+    if assessment_id <= 0:
+        return None
+
+    return assessment_id
+
+
 @risk_bp.route(
     "/api/risk-assessments/save",
     methods=["POST"]
@@ -877,13 +969,37 @@ def save_risk_assessment_api():
             "status": "待處理",
 
             "uploaded_by": user_id,
-            "created_at": datetime.now().isoformat()
+            # risk_assessments.created_at is an absolute instant.  Always
+            # include an explicit offset so Postgres/PostgREST cannot treat a
+            # Taiwan wall-clock value as UTC and make the browser add +08:00
+            # a second time when historical assessments are reopened.
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
 
         result = save_risk_assessment_record(
             assessment_payload,
             company_id=company_id
         )
+
+        # ====================================================
+        # 一定要能從 insert 結果拿到合法的 assessment_id，
+        # 否則前端無法把這筆評鑑接到後續的 AI Advice / RiskOps，
+        # 不可以回報成功。
+        # ====================================================
+
+        assessment_id = _extract_assessment_id(result)
+
+        if assessment_id is None:
+            logger.error(
+                "儲存評鑑紀錄後未取得合法的 assessment_id：asset_id=%s",
+                asset_id
+            )
+
+            return _json_error(
+                "儲存評鑑紀錄失敗",
+                "SAVE_ASSESSMENT_FAILED",
+                503
+            )
 
         # ====================================================
         # Audit Log
@@ -909,6 +1025,7 @@ def save_risk_assessment_api():
 
         return jsonify({
             "success": True,
+            "assessment_id": assessment_id,
             "data": result
         }), 201
 
@@ -990,10 +1107,13 @@ def get_riskops_api(assessment_id):
         )
 
     try:
+        # risk_assessments 走 server-side privileged client；
+        # assets 仍維持原本的 anon client，不擴大本輪變更範圍。
+        admin_supabase = get_supabase_admin_client()
         supabase = get_supabase_client()
 
         response = (
-            supabase
+            admin_supabase
             .table("risk_assessments")
             .select(
                 """
@@ -1005,6 +1125,12 @@ def get_riskops_api(assessment_id):
                 treatment_note,
                 treatment_due_date,
                 evidence_url,
+                threat_description,
+                cvss_score,
+                likelihood_score,
+                impact_score,
+                risk_score,
+                risk_level,
                 created_at
                 """
             )
@@ -1030,7 +1156,8 @@ def get_riskops_api(assessment_id):
             )
 
         # =================================================
-        # 取得該資產的負責人 asset_owner
+        # 取得資產資料（重新開啟歷史評鑑時，
+        # 讓 AI 建議頁能顯示資產名稱 / CIA / 負責人）
         # =================================================
 
         assessment = assessments[0]
@@ -1038,12 +1165,24 @@ def get_riskops_api(assessment_id):
         asset_id = assessment.get("asset_id")
 
         asset_owner = ""
+        asset_info = {}
 
         if asset_id:
             asset_response = (
                 supabase
                 .table("assets")
-                .select("risk_owner")
+                .select(
+                    """
+                    asset_name,
+                    asset_type,
+                    description,
+                    confidentiality,
+                    integrity,
+                    availability,
+                    legality,
+                    risk_owner
+                    """
+                )
                 .eq("id", asset_id)
                 .eq("company_id", company_id)
                 .limit(1)
@@ -1053,13 +1192,21 @@ def get_riskops_api(assessment_id):
             asset_data = asset_response.data or []
 
             if asset_data:
+                asset_info = asset_data[0]
                 asset_owner = (
-                    asset_data[0].get("risk_owner")
+                    asset_info.get("risk_owner")
                     or ""
                 )
 
-        # 將負責人放進回傳資料
+        # 將負責人與資產資料放進回傳資料
         assessment["asset_owner"] = asset_owner
+        assessment["asset_name"] = asset_info.get("asset_name")
+        assessment["asset_type"] = asset_info.get("asset_type")
+        assessment["description"] = asset_info.get("description")
+        assessment["confidentiality"] = asset_info.get("confidentiality")
+        assessment["integrity"] = asset_info.get("integrity")
+        assessment["availability"] = asset_info.get("availability")
+        assessment["legality"] = asset_info.get("legality")
 
         return jsonify({
             "success": True,
@@ -1183,6 +1330,21 @@ def save_riskops_api(assessment_id):
         )
 
     # ========================================================
+    # 「已完成」前置條件
+    #
+    # 「處置已完成」只代表使用者已完成填寫的改善措施，
+    # 不代表風險已消除，也不會回頭調整 risk_score。
+    # 這裡只做最小驗證：不允許沒有改善內容就標記完成。
+    # ========================================================
+
+    if status == "已完成" and not treatment_note:
+        return _json_error(
+            "標記為已完成前，請先填寫實際改善處理內容",
+            "TREATMENT_NOTE_REQUIRED_FOR_COMPLETION",
+            400
+        )
+
+    # ========================================================
     # 日期驗證
     # ========================================================
 
@@ -1209,10 +1371,13 @@ def save_riskops_api(assessment_id):
 
     try:
 
+        # risk_assessments 走 server-side privileged client；
+        # audit_logs 仍維持原本的 anon client，不擴大本輪變更範圍。
+        admin_supabase = get_supabase_admin_client()
         supabase = get_supabase_client()
 
         assessment_response = (
-            supabase
+            admin_supabase
             .table("risk_assessments")
             .select(
                 """
@@ -1261,7 +1426,7 @@ def save_riskops_api(assessment_id):
         }
 
         update_response = (
-            supabase
+            admin_supabase
             .table("risk_assessments")
             .update(update_data)
             .eq(
@@ -1279,6 +1444,22 @@ def save_riskops_api(assessment_id):
             update_response.data
             or []
         )
+
+        if not _update_returned_expected_row(
+            updated_data,
+            assessment_id,
+            company_id
+        ):
+            logger.error(
+                "RiskOps Lite UPDATE 未實際寫入任何資料列：assessment_id=%s",
+                assessment_id
+            )
+
+            return _json_error(
+                "風險處理資料未成功寫入",
+                "RISKOPS_UPDATE_NOT_APPLIED",
+                503
+            )
 
         # ====================================================
         # Audit Log
@@ -1519,8 +1700,11 @@ def ai_advice_page():
 
             if asset_ids:
 
+                # risk_assessments 走 server-side privileged client。
+                admin_supabase = get_supabase_admin_client()
+
                 response = (
-                    supabase
+                    admin_supabase
                     .table("risk_assessments")
                     .select("id")
                     .eq(
@@ -2032,60 +2216,131 @@ def ai_advice():
 
 
     # ========================================================
+    # 13. 取得欲寫入的風險評鑑 ID
+    #
+    # 只有前端明確傳入 assessment_id 時才允許寫入，
+    # 避免同一資產有多筆評鑑時把建議寫到錯誤紀錄。
+    # 沒有 assessment_id 時仍可產生預覽，但不得持久化。
+    # ========================================================
+
+    requested_assessment_id = data.get("assessment_id")
+
+    if requested_assessment_id in (None, ""):
+        requested_assessment_id = None
+
+    else:
+        try:
+            if isinstance(requested_assessment_id, bool):
+                raise ValueError
+
+            requested_assessment_id = int(requested_assessment_id)
+
+            if requested_assessment_id <= 0:
+                raise ValueError
+
+        except (TypeError, ValueError):
+            return _json_error(
+                "風險評鑑 ID 格式錯誤",
+                "INVALID_ASSESSMENT_ID",
+                400
+            )
+
+
+    # ========================================================
     # 14. 回傳 AI 結果
     # ========================================================
     try:
 
-        assessment_response = (
-            supabase
-            .table("risk_assessments")
-            .select("id, asset_id, company_id, status")
-            .eq("asset_id", asset_id)
-            .eq("company_id", company_id)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
+        if requested_assessment_id is not None:
 
-        assessments = (
-            assessment_response.data
-            or []
-        )
+            # risk_assessments 走 server-side privileged client；
+            # 明確指定 assessment_id：
+            # 只允許寫入「目前登入公司」且「屬於這個資產」的那一筆，
+            # 不接受前端指定其他公司或其他資產的紀錄。
+            admin_supabase = get_supabase_admin_client()
 
-        if not assessments:
-
-            return _json_error(
-                "找不到此資產的風險評鑑紀錄",
-                "ASSESSMENT_NOT_FOUND",
-                404
+            assessment_response = (
+                admin_supabase
+                .table("risk_assessments")
+                .select("id, asset_id, company_id, status")
+                .eq("id", requested_assessment_id)
+                .eq("company_id", company_id)
+                .limit(1)
+                .execute()
             )
 
-        assessment_id = assessments[0]["id"]
+            assessments = (
+                assessment_response.data
+                or []
+            )
 
-        # ========================================================
-        # 將原始 AI 建議保存到 risk_assessments
-        # ========================================================
-        update_response = (
-            supabase
-            .table("risk_assessments")
-            .update({
-                "ai_suggestion": advice
-            })
-            .eq("id", assessment_id)
-            .eq("company_id", company_id)
-            .execute()
-        )
+            if not assessments:
 
-        logger.info(
-            "AI 建議已寫入 risk_assessments：assessment_id=%s",
-            assessment_id
-        )
+                return _json_error(
+                    "找不到此風險評鑑紀錄，或不屬於目前公司",
+                    "ASSESSMENT_NOT_FOUND",
+                    404
+                )
 
-        logger.info(
-            "AI 建議 UPDATE 執行完成：assessment_id=%s",
-            assessment_id
-        )
-        
+            if assessments[0].get("asset_id") != asset_id:
+
+                return _json_error(
+                    "風險評鑑紀錄與資產不符",
+                    "ASSESSMENT_ASSET_MISMATCH",
+                    400
+                )
+
+            assessment_id = assessments[0]["id"]
+
+            # 只更新 ai_suggestion，不動評鑑或處置的其他欄位。
+            update_response = (
+                admin_supabase
+                .table("risk_assessments")
+                .update({
+                    "ai_suggestion": advice
+                })
+                .eq("id", assessment_id)
+                .eq("company_id", company_id)
+                .execute()
+            )
+
+            updated_data = (
+                update_response.data
+                or []
+            )
+
+            if not _update_returned_expected_row(
+                updated_data,
+                assessment_id,
+                company_id
+            ):
+                logger.error(
+                    "AI 建議 UPDATE 未實際寫入任何資料列："
+                    "assessment_id=%s",
+                    assessment_id
+                )
+
+                return jsonify({
+                    "success": False,
+                    "code": "AI_ADVICE_PERSIST_FAILED",
+                    "error": "AI 建議已產生，但未成功保存至風險評鑑",
+                    "advice": advice,
+                    "assessment_id": requested_assessment_id
+                }), 503
+
+            logger.info(
+                "AI 建議已寫入 risk_assessments：assessment_id=%s",
+                assessment_id
+            )
+
+        else:
+            assessment_id = None
+            logger.info(
+                "AI Advisor 未收到 assessment_id；僅回傳預覽，不寫入："
+                "asset_id=%s",
+                asset_id
+            )
+
     except Exception as e:
 
         logger.exception(
@@ -2098,7 +2353,7 @@ def ai_advice():
             "ASSESSMENT_FETCH_FAILED",
             500
         )
-    
+
     return jsonify({
 
         "success": True,
@@ -2194,8 +2449,11 @@ def export():
 
         assessments = []
         if asset_ids:
+            # risk_assessments 走 server-side privileged client。
+            admin_supabase = get_supabase_admin_client()
+
             assessment_response = (
-                supabase
+                admin_supabase
                 .table("risk_assessments")
                 .select(
                     "id, company_id, asset_id, cvss_score, "

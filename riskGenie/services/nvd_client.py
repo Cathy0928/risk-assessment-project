@@ -1,364 +1,500 @@
+# -*- coding: utf-8 -*-
 """
-NVD CVE API client for RiskGenie.
+NVD (National Vulnerability Database) CVE API 2.0 client.
 
-Responsibilities:
-- Connect to NVD CVE API 2.0
-- Fetch CVEs incrementally by last modified time
-- Handle pagination
-- Handle timeout / retry / rate limiting
-- Return raw NVD CVE records
+Scope of this module:
+    - Fetch CVE records from the official NVD REST API
+      (https://services.nvd.nist.gov/rest/json/cves/2.0), including
+      pagination, timeouts, HTTP 429 / Retry-After handling, and a
+      bounded retry/backoff for transient failures.
 
-This module must NOT:
-- Access Supabase
-- Write to database
-- Generate embeddings
-- Decide whether an asset is vulnerable
-- Modify risk scores
+Explicitly NOT this module's job:
+    - Deciding whether a CVE is "new" / "changed" (see cve_change_detector.py).
+    - Writing anything to Supabase.
+    - Deciding whether an asset is vulnerable. RiskGenie is an ISMS asset
+      inventory / risk assessment tool, not a vulnerability scanner —
+      this client only fetches public CVE metadata.
+    - Scheduling / running itself periodically. Callers decide when and
+      how often to invoke it.
+
+This module makes no network calls at import time and never calls the
+real NVD API from tests — every test injects a fake `session` object
+whose `.get(...)` is fully under test control.
 """
 
+import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
 
 import requests
-from dotenv import load_dotenv
 
 
-load_dotenv()
+logger = logging.getLogger(__name__)
 
 
-NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+# ============================================================
+# NVD API 2.0 constants
+# ============================================================
 
-# NVD pagination
-DEFAULT_RESULTS_PER_PAGE = 2000
+NVD_BASE_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+
+# NVD enforces at most 120 consecutive days between lastModStartDate and
+# lastModEndDate when both are supplied. Sending a wider range is a
+# guaranteed 4xx from NVD, so we fail fast locally instead.
+MAX_LAST_MODIFIED_RANGE_DAYS = 120
+
+# NVD caps resultsPerPage at 2000 as of API 2.0.
 MAX_RESULTS_PER_PAGE = 2000
+DEFAULT_RESULTS_PER_PAGE = 2000
 
-# HTTP behavior
-REQUEST_TIMEOUT = 30
-MAX_RETRY = 3
-INITIAL_BACKOFF = 2
-MAX_BACKOFF = 30
+DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_MAX_RETRIES = 5
+DEFAULT_BACKOFF_SECONDS = 1.0
+DEFAULT_MAX_BACKOFF_SECONDS = 60.0
 
-# NVD API key is optional
-NVD_API_KEY = os.getenv("NVD_API_KEY")
-
-
-class NVDAPIError(RuntimeError):
-    """Raised when NVD API cannot be reached successfully."""
-
-
-def _format_nvd_datetime(value: datetime) -> str:
-    """
-    Convert datetime to NVD API format.
-
-    Example:
-        2026-09-21T10:30:00.000Z
-    """
-
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-
-    value = value.astimezone(timezone.utc)
-
-    return value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+REQUIRED_RESPONSE_FIELDS = (
+    "totalResults",
+    "resultsPerPage",
+    "startIndex",
+    "vulnerabilities",
+)
 
 
-def _parse_retry_after(response: requests.Response) -> Optional[int]:
-    """
-    Read Retry-After header if provided by NVD.
-    """
+# ============================================================
+# Errors
+# ============================================================
 
-    retry_after = response.headers.get("Retry-After")
-
-    if not retry_after:
-        return None
-
-    try:
-        return max(1, int(retry_after))
-    except ValueError:
-        return None
+class NVDClientError(Exception):
+    """Base error for all NVD client failures."""
 
 
-def _request(
-    params: Dict[str, Any],
-    session: requests.Session,
-) -> Dict[str, Any]:
-    """
-    Perform one NVD API request with bounded retry.
+class NVDInvalidParametersError(NVDClientError):
+    """Raised for parameters we can reject before making a request
+    (e.g. a lastModified window wider than NVD allows)."""
+
+
+class NVDRateLimitExceededError(NVDClientError):
+    """Raised when NVD keeps responding 429 past the retry budget."""
+
+
+class NVDResponseError(NVDClientError):
+    """Raised when NVD returns a non-200, non-JSON, or incomplete body."""
+
+
+# ============================================================
+# Client
+# ============================================================
+
+class NVDClient:
+    """Thin, retrying HTTP client for the NVD CVE API 2.0.
+
+    `session` defaults to the `requests` module itself but can be any
+    object exposing a `.get(url, params=, headers=, timeout=)` method
+    that returns an object with `.status_code`, `.json()`, and
+    `.headers` — this is what tests inject instead of hitting the
+    network.
+
+    `sleep` defaults to `time.sleep` but can be replaced in tests so
+    retry/backoff logic runs instantly instead of actually waiting.
     """
 
-    headers = {
-        "Accept": "application/json",
-    }
+    def __init__(
+        self,
+        api_key=None,
+        session=None,
+        timeout=DEFAULT_TIMEOUT_SECONDS,
+        max_retries=DEFAULT_MAX_RETRIES,
+        backoff_seconds=DEFAULT_BACKOFF_SECONDS,
+        max_backoff_seconds=DEFAULT_MAX_BACKOFF_SECONDS,
+        sleep=None,
+    ):
+        # Preserve explicit dependency injection while also supporting the
+        # environment-based configuration used by the legacy functional API.
+        self._api_key = api_key if api_key is not None else os.getenv("NVD_API_KEY")
+        self._session = session or requests
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._backoff_seconds = backoff_seconds
+        self._max_backoff_seconds = max_backoff_seconds
+        self._sleep = sleep or time.sleep
 
-    if NVD_API_KEY:
-        headers["apiKey"] = NVD_API_KEY
+    # --------------------------------------------------------
+    # Public API
+    # --------------------------------------------------------
 
-    last_error = None
+    def fetch_page(
+        self,
+        last_mod_start_date=None,
+        last_mod_end_date=None,
+        start_index=0,
+        results_per_page=DEFAULT_RESULTS_PER_PAGE,
+    ):
+        """Fetch one page of CVE results. Returns the raw decoded JSON
+        body (already validated to have the expected top-level shape)."""
 
-    for attempt in range(1, MAX_RETRY + 1):
-
-        try:
-            response = session.get(
-                NVD_API_URL,
-                params=params,
-                headers=headers,
-                timeout=REQUEST_TIMEOUT,
-            )
-
-            # Success
-            if response.status_code == 200:
-                return response.json()
-
-            # Rate limit
-            if response.status_code == 429:
-                retry_after = _parse_retry_after(response)
-
-                if retry_after is None:
-                    retry_after = min(
-                        INITIAL_BACKOFF * (2 ** (attempt - 1)),
-                        MAX_BACKOFF,
-                    )
-
-                if attempt < MAX_RETRY:
-                    print(
-                        f"[NVD] HTTP 429. "
-                        f"Retrying in {retry_after} seconds "
-                        f"(attempt {attempt}/{MAX_RETRY})"
-                    )
-                    time.sleep(retry_after)
-                    continue
-
-                raise NVDAPIError(
-                    "NVD API rate limit exceeded after retries."
-                )
-
-            # Temporary server errors
-            if response.status_code in (500, 502, 503, 504):
-
-                if attempt < MAX_RETRY:
-                    sleep_time = min(
-                        INITIAL_BACKOFF * (2 ** (attempt - 1)),
-                        MAX_BACKOFF,
-                    )
-
-                    print(
-                        f"[NVD] HTTP {response.status_code}. "
-                        f"Retrying in {sleep_time} seconds "
-                        f"(attempt {attempt}/{MAX_RETRY})"
-                    )
-
-                    time.sleep(sleep_time)
-                    continue
-
-                raise NVDAPIError(
-                    f"NVD API server error: HTTP {response.status_code}"
-                )
-
-            # Other HTTP errors should fail immediately
-            raise NVDAPIError(
-                f"NVD API request failed: "
-                f"HTTP {response.status_code} - {response.text[:500]}"
-            )
-
-        except requests.Timeout as exc:
-            last_error = exc
-
-            if attempt < MAX_RETRY:
-                sleep_time = min(
-                    INITIAL_BACKOFF * (2 ** (attempt - 1)),
-                    MAX_BACKOFF,
-                )
-
-                print(
-                    f"[NVD] Request timeout. "
-                    f"Retrying in {sleep_time} seconds "
-                    f"(attempt {attempt}/{MAX_RETRY})"
-                )
-
-                time.sleep(sleep_time)
-                continue
-
-        except requests.RequestException as exc:
-            last_error = exc
-
-            if attempt < MAX_RETRY:
-                sleep_time = min(
-                    INITIAL_BACKOFF * (2 ** (attempt - 1)),
-                    MAX_BACKOFF,
-                )
-
-                print(
-                    f"[NVD] Network error: {exc}. "
-                    f"Retrying in {sleep_time} seconds "
-                    f"(attempt {attempt}/{MAX_RETRY})"
-                )
-
-                time.sleep(sleep_time)
-                continue
-
-    raise NVDAPIError(
-        f"NVD API request failed after {MAX_RETRY} retries: "
-        f"{last_error}"
-    )
-
-
-def fetch_cves(
-    modified_start: datetime,
-    modified_end: Optional[datetime] = None,
-    results_per_page: int = DEFAULT_RESULTS_PER_PAGE,
-) -> List[Dict[str, Any]]:
-    """
-    Fetch CVEs modified within the specified time range.
-
-    Args:
-        modified_start:
-            Start of NVD last-modified window.
-
-        modified_end:
-            End of NVD last-modified window.
-            Defaults to current UTC time.
-
-        results_per_page:
-            Number of CVEs per API request.
-
-    Returns:
-        List of raw NVD vulnerability records.
-    """
-
-    if modified_end is None:
-        modified_end = datetime.now(timezone.utc)
-
-    if modified_start.tzinfo is None:
-        modified_start = modified_start.replace(tzinfo=timezone.utc)
-
-    if modified_end.tzinfo is None:
-        modified_end = modified_end.replace(tzinfo=timezone.utc)
-
-    if modified_start > modified_end:
-        raise ValueError(
-            "modified_start must not be later than modified_end."
+        self._validate_date_range(
+            last_mod_start_date,
+            last_mod_end_date,
         )
 
-    results_per_page = min(
-        max(1, results_per_page),
-        MAX_RESULTS_PER_PAGE,
-    )
+        if start_index < 0:
+            raise NVDInvalidParametersError(
+                "start_index must be >= 0."
+            )
 
-    session = requests.Session()
-
-    all_vulnerabilities: List[Dict[str, Any]] = []
-
-    start_index = 0
-
-    start_date = _format_nvd_datetime(modified_start)
-    end_date = _format_nvd_datetime(modified_end)
-
-    while True:
+        results_per_page = max(
+            1,
+            min(results_per_page, MAX_RESULTS_PER_PAGE),
+        )
 
         params = {
-            "lastModStartDate": start_date,
-            "lastModEndDate": end_date,
             "startIndex": start_index,
             "resultsPerPage": results_per_page,
         }
 
-        print(
-            f"[NVD] Fetching CVEs "
-            f"startIndex={start_index}, "
-            f"resultsPerPage={results_per_page}"
+        if last_mod_start_date is not None:
+            params["lastModStartDate"] = last_mod_start_date
+
+        if last_mod_end_date is not None:
+            params["lastModEndDate"] = last_mod_end_date
+
+        return self._get_with_retry(params)
+
+    def iter_cves(
+        self,
+        last_mod_start_date=None,
+        last_mod_end_date=None,
+        results_per_page=DEFAULT_RESULTS_PER_PAGE,
+        max_pages=None,
+    ):
+        """Yield each CVE dict (the value of vulnerabilities[i]['cve'])
+        across every page in the requested window.
+
+        Pagination follows NVD's documented contract: keep advancing
+        startIndex by the number of results actually returned until
+        startIndex >= totalResults, rather than assuming a fixed page
+        size (the last page is often short).
+        """
+
+        self.last_iteration_complete = False
+        start_index = 0
+        pages_fetched = 0
+
+        while True:
+            page = self.fetch_page(
+                last_mod_start_date=last_mod_start_date,
+                last_mod_end_date=last_mod_end_date,
+                start_index=start_index,
+                results_per_page=results_per_page,
+            )
+
+            vulnerabilities = page["vulnerabilities"]
+
+            for item in vulnerabilities:
+                cve = item.get("cve") if isinstance(item, dict) else None
+                if cve:
+                    yield cve
+
+            pages_fetched += 1
+            fetched_this_page = len(vulnerabilities)
+            total_results = page.get("totalResults") or 0
+
+            start_index += fetched_this_page
+
+            if fetched_this_page == 0:
+                # No progress possible; avoid an infinite loop on a
+                # malformed-but-technically-valid response.
+                self.last_iteration_complete = start_index >= total_results
+                break
+
+            if start_index >= total_results:
+                self.last_iteration_complete = True
+                break
+
+            if max_pages is not None and pages_fetched >= max_pages:
+                logger.info(
+                    "NVD iter_cves stopped at max_pages=%s "
+                    "(start_index=%s, totalResults=%s).",
+                    max_pages,
+                    start_index,
+                    total_results,
+                )
+                break
+
+    # --------------------------------------------------------
+    # Internal: HTTP + retry/backoff
+    # --------------------------------------------------------
+
+    def _headers(self):
+        headers = {"Accept": "application/json"}
+        if self._api_key:
+            headers["apiKey"] = self._api_key
+        return headers
+
+    def _get_with_retry(self, params):
+        attempt = 0
+
+        while True:
+            attempt += 1
+
+            try:
+                response = self._session.get(
+                    NVD_BASE_URL,
+                    params=params,
+                    headers=self._headers(),
+                    timeout=self._timeout,
+                )
+
+            except requests.Timeout as exc:
+                self._retry_or_raise(
+                    attempt,
+                    NVDClientError(
+                        f"NVD API timed out after {attempt} attempt(s): {exc}"
+                    ),
+                )
+                continue
+
+            except requests.RequestException as exc:
+                self._retry_or_raise(
+                    attempt,
+                    NVDClientError(
+                        f"NVD API request failed after {attempt} "
+                        f"attempt(s): {exc}"
+                    ),
+                )
+                continue
+
+            status_code = response.status_code
+
+            if status_code == 429:
+                retry_after = self._parse_retry_after(response)
+                self._retry_or_raise(
+                    attempt,
+                    NVDRateLimitExceededError(
+                        f"NVD API rate limit exceeded after {attempt} "
+                        "attempt(s)."
+                    ),
+                    delay_override=retry_after,
+                )
+                continue
+
+            if 500 <= status_code < 600:
+                self._retry_or_raise(
+                    attempt,
+                    NVDClientError(
+                        f"NVD API returned {status_code} after "
+                        f"{attempt} attempt(s)."
+                    ),
+                )
+                continue
+
+            if status_code != 200:
+                raise NVDResponseError(
+                    f"NVD API returned unexpected status {status_code}: "
+                    f"{self._safe_body_preview(response)}"
+                )
+
+            return self._parse_and_validate(response)
+
+    def _retry_or_raise(self, attempt, error, delay_override=None):
+        if attempt > self._max_retries:
+            raise error
+
+        delay = (
+            delay_override
+            if delay_override is not None
+            else self._backoff_delay(attempt)
         )
 
-        data = _request(
-            params=params,
-            session=session,
+        logger.warning(
+            "%s Retrying in %.1fs (attempt %s/%s).",
+            error,
+            delay,
+            attempt,
+            self._max_retries,
         )
 
-        vulnerabilities = data.get("vulnerabilities", [])
+        self._sleep(delay)
 
-        total_results = int(
-            data.get("totalResults", 0)
+    def _backoff_delay(self, attempt):
+        delay = self._backoff_seconds * (2 ** (attempt - 1))
+        return min(delay, self._max_backoff_seconds)
+
+    @staticmethod
+    def _parse_retry_after(response):
+        headers = getattr(response, "headers", None) or {}
+        raw = headers.get("Retry-After")
+
+        if raw is None:
+            return None
+
+        try:
+            return max(float(raw), 0.0)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _safe_body_preview(response):
+        try:
+            return str(getattr(response, "text", ""))[:500]
+        except Exception:
+            return "<unavailable>"
+
+    def _parse_and_validate(self, response):
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise NVDResponseError(
+                f"NVD API returned a non-JSON response: {exc}"
+            ) from exc
+
+        if not isinstance(payload, dict):
+            raise NVDResponseError(
+                "NVD API response is not a JSON object."
+            )
+
+        missing = [
+            field
+            for field in REQUIRED_RESPONSE_FIELDS
+            if field not in payload
+        ]
+
+        if missing:
+            raise NVDResponseError(
+                "NVD API response missing required field(s): "
+                + ", ".join(missing)
+            )
+
+        if not isinstance(payload["vulnerabilities"], list):
+            raise NVDResponseError(
+                "NVD API response 'vulnerabilities' field is not a list."
+            )
+
+        return payload
+
+    # --------------------------------------------------------
+    # Internal: parameter validation
+    # --------------------------------------------------------
+
+    @staticmethod
+    def _validate_date_range(start, end):
+        if start is None or end is None:
+            return
+
+        start_dt = NVDClient._parse_iso8601(start, "last_mod_start_date")
+        end_dt = NVDClient._parse_iso8601(end, "last_mod_end_date")
+
+        if end_dt < start_dt:
+            raise NVDInvalidParametersError(
+                "last_mod_end_date must not be before last_mod_start_date."
+            )
+
+        span_days = (end_dt - start_dt).total_seconds() / 86400.0
+
+        if span_days > MAX_LAST_MODIFIED_RANGE_DAYS:
+            raise NVDInvalidParametersError(
+                "NVD only allows up to "
+                f"{MAX_LAST_MODIFIED_RANGE_DAYS} days between "
+                "last_mod_start_date and last_mod_end_date "
+                f"(got {span_days:.1f} days)."
+            )
+
+    @staticmethod
+    def _parse_iso8601(value, field_name):
+        text = value.strip() if isinstance(value, str) else value
+
+        if not isinstance(text, str) or not text:
+            raise NVDInvalidParametersError(
+                f"{field_name} must be a non-empty ISO-8601 string."
+            )
+
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise NVDInvalidParametersError(
+                f"{field_name}={value!r} is not a valid ISO-8601 "
+                f"timestamp: {exc}"
+            ) from exc
+
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+
+        return parsed
+
+
+# ============================================================
+# Backward-compatible functional API
+# ============================================================
+
+# origin/master exposed these helpers before the class-based client became
+# the primary API. Keep them as thin adapters so existing callers retain the
+# class client's validation, retries, timeouts, and response parsing.
+NVDAPIError = NVDClientError
+
+
+def _format_nvd_datetime(value):
+    """Return a datetime in the timestamp format accepted by NVD API 2.0."""
+    if not isinstance(value, datetime):
+        raise TypeError("value must be a datetime")
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def fetch_cves(
+    modified_start,
+    modified_end=None,
+    results_per_page=DEFAULT_RESULTS_PER_PAGE,
+    client=None,
+):
+    """Fetch raw NVD vulnerability wrappers for a last-modified window.
+
+    New code should normally use :class:`NVDClient` directly. This adapter
+    preserves origin/master's public function without maintaining a second,
+    less thoroughly validated HTTP implementation.
+    """
+    modified_end = modified_end or datetime.now(timezone.utc)
+    start_text = _format_nvd_datetime(modified_start)
+    end_text = _format_nvd_datetime(modified_end)
+    nvd_client = client or NVDClient()
+
+    vulnerabilities = []
+    start_index = 0
+    nvd_client.last_iteration_complete = False
+
+    while True:
+        page = nvd_client.fetch_page(
+            last_mod_start_date=start_text,
+            last_mod_end_date=end_text,
+            start_index=start_index,
+            results_per_page=results_per_page,
         )
+        rows = page["vulnerabilities"]
+        vulnerabilities.extend(rows)
+        start_index += len(rows)
+        total_results = page.get("totalResults") or 0
 
-        all_vulnerabilities.extend(vulnerabilities)
-
-        print(
-            f"[NVD] Received {len(vulnerabilities)} CVEs. "
-            f"Total fetched: {len(all_vulnerabilities)}/"
-            f"{total_results}"
-        )
-
-        # Nothing more to fetch
-        if not vulnerabilities:
+        if not rows:
+            nvd_client.last_iteration_complete = start_index >= total_results
             break
-
-        start_index += len(vulnerabilities)
-
-        # Finished all results
         if start_index >= total_results:
+            nvd_client.last_iteration_complete = True
             break
 
-    return all_vulnerabilities
+    return vulnerabilities
 
 
-def fetch_cves_since(
-    modified_start: datetime,
-    overlap_minutes: int = 2,
-) -> List[Dict[str, Any]]:
-    """
-    Fetch CVEs modified since a previous sync.
-
-    A small overlap is intentionally used to avoid missing records
-    modified exactly around the synchronization boundary.
-
-    Duplicate CVEs are expected to be removed later by the sync
-    service using CVE ID + content hash.
-    """
-
+def fetch_cves_since(modified_start, overlap_minutes=2, client=None):
+    """Fetch CVEs since a checkpoint with a small boundary overlap."""
+    if not isinstance(modified_start, datetime):
+        raise TypeError("modified_start must be a datetime")
     if modified_start.tzinfo is None:
         modified_start = modified_start.replace(tzinfo=timezone.utc)
-
-    adjusted_start = modified_start - timedelta(
-        minutes=overlap_minutes
-    )
-
-    modified_end = datetime.now(timezone.utc)
-
     return fetch_cves(
-        modified_start=adjusted_start,
-        modified_end=modified_end,
+        modified_start=modified_start - timedelta(minutes=overlap_minutes),
+        modified_end=datetime.now(timezone.utc),
+        client=client,
     )
-
-
-if __name__ == "__main__":
-    """
-    Simple manual test.
-
-    Fetch CVEs modified during the last 24 hours.
-    """
-
-    end = datetime.now(timezone.utc)
-
-    start = end - timedelta(days=1)
-
-    print(
-        f"[NVD] Test fetch: "
-        f"{_format_nvd_datetime(start)} -> "
-        f"{_format_nvd_datetime(end)}"
-    )
-
-    try:
-        vulnerabilities = fetch_cves(
-            modified_start=start,
-            modified_end=end,
-        )
-
-        print(
-            f"[NVD] Successfully fetched "
-            f"{len(vulnerabilities)} CVE records."
-        )
-
-    except Exception as exc:
-        print(f"[NVD] ERROR: {exc}")
-        raise
