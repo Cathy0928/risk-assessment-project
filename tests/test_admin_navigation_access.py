@@ -152,7 +152,7 @@ ADMIN_LINK_NEEDLE = 'href="/admin/users"'
 # 尚未遷移的舊頁面仍保留沒有 href 的裝飾性按鈕，等遷移後再移出此清單。
 PAGES_ON_SHARED_LAYOUT = (
     "/", "/summary", "/asset_add", "/asset_edit/701", "/weight_setting",
-    "/risk_assessment", "/ai-advice", "/risk-report",
+    "/risk_assessment", "/ai-advice", "/risk-report", "/asset_delete/701",
 )
 
 # (page path, requires a DB-backed asset to exist at this id or not)

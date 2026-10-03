@@ -368,6 +368,8 @@ img, svg { max-width: 100%; }
 .table__primary { font-weight: 600; color: var(--c-text); }
 .table__secondary { font-size: var(--fs-caption); color: var(--c-text-muted); }
 .table .cell-clip { max-width: 260px; }
+.table tbody tr.is-disabled { color: var(--c-text-faint); }
+.table tbody tr.is-disabled .table__primary { color: var(--c-text-faint); }
 
 .toolbar {
     display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3);

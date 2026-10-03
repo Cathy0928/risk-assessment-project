@@ -7,6 +7,8 @@
     var root = document.getElementById('riskReportRoot');
     if (!root) { return; }
 
+    var Agg = window.RiskAggregations;
+
     var URLS = {
         assessments: root.dataset.assessmentsUrl,
         assets: root.dataset.assetsUrl,
@@ -43,17 +45,8 @@
 
     function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
 
-    function riskRank(level) {
-        var s = String(level || '');
-        if (s.indexOf('極高') !== -1) { return 4; }
-        if (s.indexOf('高') !== -1) { return 3; }
-        if (s.indexOf('中') !== -1) { return 2; }
-        if (s.indexOf('低') !== -1) { return 1; }
-        return 0;
-    }
-
     function riskBadge(level) {
-        var rank = riskRank(level);
+        var rank = Agg.riskRank(level);
         var label = String(level || '未分級').replace(/\s*\(.*\)\s*$/, '');
         var cls = rank >= 3 ? 'badge--danger' : rank === 2 ? 'badge--warning' : rank === 1 ? 'badge--info' : '';
         return el('span', 'badge ' + cls, label);
@@ -64,26 +57,6 @@
         return el('span', 'badge ' + (STATUS_BADGE[label] || ''), label);
     }
 
-    function today() {
-        var d = new Date();
-        return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    }
-
-    function daysUntil(dateStr) {
-        if (!dateStr) { return null; }
-        var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr));
-        if (!m) { return null; }
-        var due = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-        return Math.round((due - today()) / 86400000);
-    }
-
-    function dueText(days) {
-        if (days === null) { return null; }
-        if (days < 0) { return '逾期 ' + (-days) + ' 天'; }
-        if (days === 0) { return '今天到期'; }
-        return days + ' 天後';
-    }
-
     function assetName(a) {
         return (a.assets && a.assets.asset_name) || ('資產 #' + a.asset_id);
     }
@@ -91,20 +64,6 @@
     function assetCode(a) { return (a.assets && a.assets.asset_id_code) || ''; }
 
     function detailUrl(a) { return URLS.detail + '?assessment_id=' + encodeURIComponent(a.id); }
-
-    /* 每個資產只看最新一次評鑑（API 已依 created_at 由新到舊排序） */
-    function latestPerAsset(list) {
-        var seen = {};
-        var out = [];
-        list.forEach(function (a) {
-            if (seen[a.asset_id]) { return; }
-            seen[a.asset_id] = true;
-            out.push(a);
-        });
-        return out;
-    }
-
-    function isOpen(a) { return (a.status || '待處理') !== '已完成'; }
 
     function showAlert(message) {
         var box = $('reportAlert');
@@ -211,13 +170,13 @@
             statusCell.appendChild(statusBadge(a.status));
             tr.appendChild(statusCell);
 
-            var days = daysUntil(a.treatment_due_date);
+            var days = Agg.daysUntil(a.treatment_due_date);
             var dueCell = el('td', 'text-nowrap');
             if (days === null) {
                 dueCell.appendChild(el('span', 'text-faint', '未設定'));
             } else {
                 dueCell.appendChild(el('span', days < 0 ? 'text-danger text-strong' : '', String(a.treatment_due_date).slice(0, 10)));
-                dueCell.appendChild(el('div', 'table__secondary', dueText(days)));
+                dueCell.appendChild(el('div', 'table__secondary', Agg.dueText(days)));
             }
             tr.appendChild(dueCell);
 
@@ -253,7 +212,7 @@
             main.appendChild(name);
             main.appendChild(el('div', 'table__secondary', String(a.treatment_due_date).slice(0, 10) + ' · ' + (a.status || '待處理')));
             row.appendChild(main);
-            row.appendChild(el('span', 'badge ' + (item.days < 0 ? 'badge--danger' : item.days <= 3 ? 'badge--warning' : ''), dueText(item.days)));
+            row.appendChild(el('span', 'badge ' + (item.days < 0 ? 'badge--danger' : item.days <= 3 ? 'badge--warning' : ''), Agg.dueText(item.days)));
             box.appendChild(row);
         });
     }
@@ -293,54 +252,27 @@
     }
 
     function summarize(assetCount, assessments) {
-        var latest = latestPerAsset(assessments);
-        var open = latest.filter(isOpen);
-        var highOpen = open.filter(function (a) { return riskRank(a.risk_level) >= 3; });
+        var summary = Agg.summarizeRiskAssessments(assetCount, assessments, { dueWindowDays: DUE_WINDOW_DAYS });
 
-        var withDays = open.map(function (a) { return { assessment: a, days: daysUntil(a.treatment_due_date) }; });
-        var overdue = withDays.filter(function (x) { return x.days !== null && x.days < 0; });
-        var dueSoon = withDays
-            .filter(function (x) { return x.days !== null && x.days <= DUE_WINDOW_DAYS; })
-            .sort(function (a, b) { return a.days - b.days; });
-
-        highOpen.sort(function (a, b) {
-            var d = riskRank(b.risk_level) - riskRank(a.risk_level);
-            if (d !== 0) { return d; }
-            return (Number(b.risk_score) || 0) - (Number(a.risk_score) || 0);
-        });
-
-        var unassessed = assetCount === null ? null : Math.max(assetCount - latest.length, 0);
-
-        setStat('statAssessed', latest.length);
-        if (unassessed !== null) {
-            $('statAssessedNote').textContent = unassessed > 0 ? unassessed + ' 項尚未評鑑' : '全部資產皆已評鑑';
+        setStat('statAssessed', summary.assessedCount);
+        if (summary.unassessed !== null) {
+            $('statAssessedNote').textContent = summary.unassessed > 0 ? summary.unassessed + ' 項尚未評鑑' : '全部資產皆已評鑑';
         }
-        setStat('statHigh', highOpen.length, 'danger');
-        setStat('statOverdue', overdue.length, 'danger');
+        setStat('statHigh', summary.highOpen.length, 'danger');
+        setStat('statOverdue', summary.overdue.length, 'danger');
 
-        renderHighRisk(highOpen);
-        renderDue(dueSoon);
+        renderHighRisk(summary.highOpen);
+        renderDue(summary.dueSoon);
 
-        var levelCounts = {};
-        latest.forEach(function (a) {
-            var label = String(a.risk_level || '').trim();
-            if (!label) { return; }
-            levelCounts[label] = (levelCounts[label] || 0) + 1;
-        });
-        renderDistribution('levelDistribution', LEVEL_ORDER, levelCounts, LEVEL_TONE);
+        renderDistribution('levelDistribution', LEVEL_ORDER, summary.levelCounts, LEVEL_TONE);
 
-        var statusCounts = {};
-        latest.forEach(function (a) {
-            var label = a.status || '待處理';
-            statusCounts[label] = (statusCounts[label] || 0) + 1;
-        });
         var statusTone = {
             '待處理': 'warning',
             '處理中': 'info',
             '待確認': null,
             '已完成': 'success'
         };
-        renderDistribution('statusDistribution', STATUS_ORDER, statusCounts, statusTone);
+        renderDistribution('statusDistribution', STATUS_ORDER, summary.statusCounts, statusTone);
     }
 
     var assetCount = null;

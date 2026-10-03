@@ -172,12 +172,12 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(res => {
             if (res.status === 200) {
                 if (res.body.status === "local_backup_only" || res.body.supabase_synced === false) {
-                    alert("⚠️ " + (res.body.message || "已儲存至本機備份，但雲端同步失敗。"));
+                    alert(res.body.message || "已儲存至本機備份，但雲端同步失敗。");
                 } else {
-                    alert("✅ " + (res.body.message || "權重與公式設定儲存成功！"));
+                    alert(res.body.message || "權重與公式設定儲存成功！");
                 }
             } else {
-                alert("❌ 儲存失敗: " + (res.body.error || "未知錯誤"));
+                alert("儲存失敗: " + (res.body.error || "未知錯誤"));
             }
         })
         .catch(err => alert("發送請求失敗: " + err));

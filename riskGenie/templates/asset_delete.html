@@ -1,148 +1,133 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <title>Genie 資安管理系統</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/asset_add.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+{% from "_components.html" import page_header %}
+{% set crumb_section = "資產管理" %}
 
-    <div class="sidebar">
-        <div class="sidebar-title">👤 Genie</div>
-        <a href="/"><button class="menu-btn active">首  頁</button></a>
-        <a href="/summary"><button class="menu-btn">資產總表</button></a>
-        <button class="menu-btn">風險評鑑</button>
-        <button class="menu-btn">權重設定</button>
-        <button class="menu-btn">ＡＩ建議</button>
-        <a href="{{ url_for('risk.risk_report') }}"><button class="menu-btn">建議報表</button></a>
-        {% if session.get('role_name') == '系統管理員' %}
-        <a href="{{ url_for('admin_users_page') }}"><button class="menu-btn">帳號管理</button></a>
-        {% else %}
-        <button class="menu-btn">帳號管理</button>
-        {% endif %}
-        <div class="menu-footer"><button class="menu-btn">⚙️ 設定</button></div>
+{% block title %}確認刪除資產{% endblock %}
+{% block crumb_page %}確認刪除資產{% endblock %}
+
+{% block content %}
+
+{% call page_header("確認刪除資產", asset.asset_name) %}{% endcall %}
+
+<div class="alert-stack">
+    <div class="alert alert--danger">以下資產將被停用，請確認資料無誤。</div>
+</div>
+
+<div class="chip-row">
+    <span>權責單位 <strong class="text-strong">{{ asset.department or '—' }}</strong></span>
+    <span>上傳者 <strong class="text-strong">{{ asset.upload_user or '—' }}</strong></span>
+    <span>建立時間 <strong class="text-strong">{{ asset.created_at | fmt_dt }}</strong></span>
+</div>
+
+<form action="/asset_delete/{{ asset.id }}" method="post">
+
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">基本資訊</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label">資產代碼</label>
+                        <input class="input" type="text" value="{{ asset.asset_id_code }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">資產類型</label>
+                        <input class="input" type="text" value="{{ asset.asset_type }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">資料類型</label>
+                        <input class="input" type="text" value="{{ asset.data_type }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">資產名稱</label>
+                        <input class="input" type="text" value="{{ asset.asset_name }}" readonly>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="main-content">
-
-
-    <div class="delete-card">
-
-
-    <h2>
-    確認刪除資產
-    </h2>
-
-
-   <p style="text-align:center;color:red;">
-    ⚠️ 以下資產將被刪除，請確認資料
-    </p>
-    <form action="/asset_delete/{{ asset.id }}" method="post">
-
-    <div class="form-group">
-    <label>部門</label>
-    <input type="text" value="{{ asset.department }}" readonly>
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">管理資訊</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label">權責單位</label>
+                        <input class="input" type="text" value="{{ asset.department }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">保管單位(風險擁有者)</label>
+                        <input class="input" type="text" value="{{ asset.risk_owner }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">使用單位</label>
+                        <input class="input" type="text" value="{{ asset.use_department }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">放置地點</label>
+                        <input class="input" type="text" value="{{ asset.location }}" readonly>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="form-group">
-    <label>上傳者</label>
-    <input type="text" value="{{ asset.upload_user }}" readonly>
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">資產說明</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="field">
+                    <label class="label">資產描述</label>
+                    <textarea class="textarea" rows="4" readonly>{{ asset.description }}</textarea>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="form-group">
-    <label>建立時間</label>
-    <input type="text" value="{{ asset.created_at }}" readonly>
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">CIA / Legal</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label">機密性(C)</label>
+                        <input class="input" type="text" value="{{ asset.confidentiality }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">完整性(I)</label>
+                        <input class="input" type="text" value="{{ asset.integrity }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">可用性(A)</label>
+                        <input class="input" type="text" value="{{ asset.availability }}" readonly>
+                    </div>
+                    <div class="field">
+                        <label class="label">適法性(L)</label>
+                        <input class="input" type="text" value="{{ asset.legality }}" readonly>
+                    </div>
+                </div>
+                <div class="field" style="max-width: 160px; margin-top: var(--sp-4);">
+                    <label class="label">資產價值</label>
+                    <input class="input" type="text" value="{{ asset.asset_value }}" readonly>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <hr>
-
-    <div class="form-group">
-    <label>資產代碼</label>
-    <input type="text" value="{{ asset.asset_id_code }}" readonly>
+    <div class="toolbar">
+        <button type="submit" class="btn btn--danger">確認刪除</button>
+        <a class="btn" href="/summary">取消</a>
     </div>
 
-    <div class="form-group">
-    <label>資產類型</label>
-    <input type="text" value="{{ asset.asset_type }}" readonly>
-    </div>
+</form>
 
-    <div class="form-group">
-    <label>資料類型</label>
-    <input type="text" value="{{ asset.data_type }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>資產名稱</label>
-    <input type="text" value="{{ asset.asset_name }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>資產描述</label>
-    <textarea readonly>{{ asset.description }}</textarea>
-    </div>
-
-    <div class="form-group">
-    <label>權責單位</label>
-    <input type="text" value="{{ asset.department }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>保管單位(風險擁有者)</label>
-    <input type="text" value="{{ asset.risk_owner }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>使用單位</label>
-    <input type="text" value="{{ asset.use_department }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>放置地點</label>
-    <input type="text" value="{{ asset.location }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>機密性(C)</label>
-    <input type="text" value="{{ asset.confidentiality }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>完整性(I)</label>
-    <input type="text" value="{{ asset.integrity }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>可用性(A)</label>
-    <input type="text" value="{{ asset.availability }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>適法性(L)</label>
-    <input type="text" value="{{ asset.legality }}" readonly>
-    </div>
-
-    <div class="form-group">
-    <label>資產價值</label>
-    <input type="text" value="{{ asset.asset_value }}" readonly>
-    </div>
-
-    <div class="button-group">
-
-    <button type="submit" class="delete-btn">
-    確認刪除
-    </button>
-
-    <a href="/summary">
-    <button type="button" class="cancel-btn">
-    取消
-    </button>
-    </a>
-
-    </div>
-
-    </form>
-    </div>
-    </div>
-    </body>
-    </html>
+{% endblock %}

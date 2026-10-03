@@ -111,5 +111,6 @@
     data-assets-url="{{ url_for('risk.get_assessment_assets_api') }}"
     data-detail-url="{{ url_for('risk.ai_advice_page') }}">
 </script>
+<script src="{{ url_for('static', filename='js/risk_aggregations.js') }}"></script>
 <script src="{{ url_for('static', filename='js/risk_report.js') }}"></script>
 {% endblock %}
