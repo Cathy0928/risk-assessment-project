@@ -1,347 +1,202 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
+{% extends "base.html" %}
+{% set crumb_section = "資產管理" %}
 
-<head>
-    <meta charset="UTF-8">
-    <title>新增資產 - Genie 資安管理系統</title>
+{% block title %}新增資產{% endblock %}
+{% block crumb_page %}新增資產{% endblock %}
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/asset_add.css') }}">
-</head>
+{% block content %}
 
-<body>
+{% from "_components.html" import page_header %}
+{% call page_header("新增資產", "填寫基本資訊與風險評估欄位，建立後即可進行風險評鑑。") %}{% endcall %}
 
-    <!-- 左側選單 -->
-    <div class="sidebar">
-        <div class="sidebar-title">👤 Genie</div>
+{% if error %}
+<div class="alert-stack">
+    <div class="alert alert--danger">{{ error }}</div>
+</div>
+{% endif %}
 
-        <a href="/">
-            <button class="menu-btn">首頁</button>
-        </a>
+<form method="post" action="/asset_add">
 
-        <a href="/summary">
-            <button class="menu-btn">資產總表</button>
-        </a>
-
-        <button class="menu-btn">風險評鑑</button>
-        <button class="menu-btn">權重設定</button>
-        <button class="menu-btn">AI建議</button>
-        <button class="menu-btn">建議報表</button>
-        {% if session.get('role_name') == '系統管理員' %}
-        <a href="{{ url_for('admin_users_page') }}">
-            <button class="menu-btn">帳號管理</button>
-        </a>
-        {% else %}
-        <button class="menu-btn">帳號管理</button>
-        {% endif %}
-
-        <div class="menu-footer">
-            <button class="menu-btn">⚙️ 設定</button>
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">基本資訊</h2>
         </div>
-    </div>
-
-    <!-- 右側內容 -->
-    <div class="main-content">
-
-    <div class="form-card">
-
-        <h2>新增資產</h2>
-
-        {% if error %}
-        <div style="
-            background:#ffe5e5;
-            color:#c62828;
-            border:1px solid #f5bcbc;
-            padding:12px;
-            margin-bottom:20px;
-            border-radius:8px;
-            text-align:center;
-            font-weight:bold;
-        ">
-            {{ error }}
-        </div>
-        {% endif %}
-
-        <form action="/asset_add" method="post">
-                <hr>
-
-                <div class="form-group">
-                    <label>資產代碼</label>
-                    <input
-                        type="text"
-                        name="asset_id_code"
-                        value="{{ form.asset_id_code if form else '' }}"
-                        required>
-                </div>
-
-                <div class="form-group">
-                    <label>資產名稱 <span class="required">*</span></label>
-                    <input
-                        type="text"
-                        name="asset_name"
-                        value="{{ form.asset_name if form else '' }}"
-                        required>
-                </div>
-
-                <div class="form-group">
-                    <label>資產類型 <span class="required">*</span></label>
-
-                    <select name="asset_type" required>
-
-                    <option value="">請選擇</option>
-
-                    <option value="DA"
-                    {% if form and form.asset_type=="DA" %}selected{% endif %}>
-                    DA－資料(Data)
-                    </option>
-
-                    <option value="DC"
-                    {% if form and form.asset_type=="DC" %}selected{% endif %}>
-                    DC－文件(Document)
-                    </option>
-
-                    <option value="CM"
-                    {% if form and form.asset_type=="CM" %}selected{% endif %}>
-                    CM－通訊(Communication)
-                    </option>
-
-                    <option value="HW"
-                    {% if form and form.asset_type=="HW" %}selected{% endif %}>
-                    HW－硬體(Hardware)
-                    </option>
-
-                    <option value="SW"
-                    {% if form and form.asset_type=="SW" %}selected{% endif %}>
-                    SW－軟體(Software)
-                    </option>
-
-                    <option value="EV"
-                    {% if form and form.asset_type=="EV" %}selected{% endif %}>
-                    EV－設備(Environment)
-                    </option>
-
-                    <option value="PE"
-                    {% if form and form.asset_type=="PE" %}selected{% endif %}>
-                    PE－人員(Person)
-                    </option>
-
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>資料類型</label>
-
-                    <select name="data_type">
-
-                    <option value="">請選擇</option>
-
-                    <option value="一般資料"
-                    {% if form and form.data_type=="一般資料" %}selected{% endif %}>
-                    一般資料
-                    </option>
-
-                    <option value="個人資料"
-                    {% if form and form.data_type=="個人資料" %}selected{% endif %}>
-                    個人資料
-                    </option>
-
-                    <option value="敏感資料"
-                    {% if form and form.data_type=="敏感資料" %}selected{% endif %}>
-                    敏感資料
-                    </option>
-
-                    <option value="機密資料"
-                    {% if form and form.data_type=="機密資料" %}selected{% endif %}>
-                    機密資料
-                    </option>
-
-                    <option value="其他"
-                    {% if form and form.data_type=="其他" %}selected{% endif %}>
-                    其他
-                    </option>
-
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>權責單位</label>
-                    <input
-                        type="text"
-                        name="department"
-                        value="{{ form.department if form else '' }}">
-                </div>
-
-
-                <div class="form-group">
-                    <label>保管單位(風險擁有者)</label>
-                    <input
-                        type="text"
-                        name="risk_owner"
-                        value="{{ form.risk_owner if form else '' }}">
-                </div>
-
-
-                <div class="form-group">
-                    <label>使用單位</label>
-                    <input
-                        type="text"
-                        name="use_department"
-                        value="{{ form.use_department if form else '' }}">
-                </div>
-
-
-                <div class="form-group">
-                    <label>放置地點</label>
-                    <input
-                        type="text"
-                        name="location"
-                        value="{{ form.location if form else '' }}">
-                </div>
-
-                <div class="form-group textarea-group">
-                    <label>資產描述 <span class="required">*</span></label>
-                    <textarea
-                        name="description"
-                        rows="5"
-                        required>{{ form.description if form else '' }}</textarea>
-                </div>
-
-                <div class="form-group">
-                    <label>機密性(C) <span class="required">*</span></label>
-
-                    <select name="confidentiality" required>
-
-                    <option value="">請選擇</option>
-
-                    {% for i in range(1,6) %}
-                    <option value="{{ i }}"
-                    {% if form and form.confidentiality|string==i|string %}selected{% endif %}>
-                    {{ i }}
-                    </option>
-                    {% endfor %}
-
-                    </select>
-
-                </div>
-
-                <div class="form-group">
-                    <label>完整性(I) <span class="required">*</span></label>
-
-                    <select name="integrity" required>
-
-                    <option value="">請選擇</option>
-
-                    {% for i in range(1,6) %}
-                    <option value="{{ i }}"
-                    {% if form and form.integrity|string==i|string %}selected{% endif %}>
-                    {{ i }}
-                    </option>
-                    {% endfor %}
-
-                    </select>
-
-                </div>
-
-                <div class="form-group">
-                    <label>可用性(A) <span class="required">*</span></label>
-
-                    <select name="availability" required>
-
-                    <option value="">請選擇</option>
-
-                    {% for i in range(1,6) %}
-                    <option value="{{ i }}"
-                    {% if form and form.availability|string==i|string %}selected{% endif %}>
-                    {{ i }}
-                    </option>
-                    {% endfor %}
-
-                    </select>
-
-                </div>
-                <div class="form-group">
-
-                    <label>適法性(L) <span class="required">*</span></label>
-
-                    <select
-                        name="legality"
-                        id="legality"
-                        onchange="updateAssetValue()"
-                        required>
-
-                        <option value="">請選擇</option>
-
-                        {% for i in range(1,6) %}
-                        <option value="{{ i }}"
-                        {% if form and form.legality|string==i|string %}selected{% endif %}>
-                        {{ i }}
-                        </option>
-                        {% endfor %}
-
-                        </select>
-
-                </div>
-                <div class="form-group">
-
-                    <label>資產價值</label>
-
-                    <input
-                        type="text"
-                        id="asset_value"
-                        value="{{ form.asset_value if form else '' }}"
-                        readonly>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label" for="asset_id_code">資產代碼</label>
+                        <input class="input" type="text" id="asset_id_code" name="asset_id_code"
+                               value="{{ form.asset_id_code if form else '' }}" required>
                     </div>
-                
 
-                <div class="button-group">
+                    <div class="field">
+                        <label class="label" for="asset_name">資產名稱<span class="required">*</span></label>
+                        <input class="input" type="text" id="asset_name" name="asset_name"
+                               value="{{ form.asset_name if form else '' }}" required>
+                    </div>
 
-                    <button type="submit" class="confirm-btn">
-                        確認新增
-                    </button>
+                    <div class="field">
+                        <label class="label" for="asset_type">資產類型<span class="required">*</span></label>
+                        <select class="select" id="asset_type" name="asset_type" required>
+                            <option value="">請選擇</option>
+                            <option value="DA" {% if form and form.asset_type=="DA" %}selected{% endif %}>DA－資料(Data)</option>
+                            <option value="DC" {% if form and form.asset_type=="DC" %}selected{% endif %}>DC－文件(Document)</option>
+                            <option value="CM" {% if form and form.asset_type=="CM" %}selected{% endif %}>CM－通訊(Communication)</option>
+                            <option value="HW" {% if form and form.asset_type=="HW" %}selected{% endif %}>HW－硬體(Hardware)</option>
+                            <option value="SW" {% if form and form.asset_type=="SW" %}selected{% endif %}>SW－軟體(Software)</option>
+                            <option value="EV" {% if form and form.asset_type=="EV" %}selected{% endif %}>EV－設備(Environment)</option>
+                            <option value="PE" {% if form and form.asset_type=="PE" %}selected{% endif %}>PE－人員(Person)</option>
+                        </select>
+                    </div>
 
-                    <a href="/">
-                        <button type="button" class="cancel-btn">
-                            取消
-                        </button>
-                    </a>
-
+                    <div class="field">
+                        <label class="label" for="data_type">資料類型</label>
+                        <select class="select" id="data_type" name="data_type">
+                            <option value="">請選擇</option>
+                            <option value="一般資料" {% if form and form.data_type=="一般資料" %}selected{% endif %}>一般資料</option>
+                            <option value="個人資料" {% if form and form.data_type=="個人資料" %}selected{% endif %}>個人資料</option>
+                            <option value="敏感資料" {% if form and form.data_type=="敏感資料" %}selected{% endif %}>敏感資料</option>
+                            <option value="機密資料" {% if form and form.data_type=="機密資料" %}selected{% endif %}>機密資料</option>
+                            <option value="其他" {% if form and form.data_type=="其他" %}selected{% endif %}>其他</option>
+                        </select>
+                    </div>
                 </div>
-                <script>
-
-                function updateAssetValue(){
-
-                let c = Number(document.querySelector('[name="confidentiality"]').value);
-                let i = Number(document.querySelector('[name="integrity"]').value);
-                let a = Number(document.querySelector('[name="availability"]').value);
-                let l = Number(document.querySelector('[name="legality"]').value);
-
-
-                let max = Math.max(c,i,a,l);
-
-
-                document.getElementById("asset_value").value=max;
-
-                }
-
-
-                document.querySelectorAll("select").forEach(
-                item=>{
-                item.addEventListener(
-                "change",
-                updateAssetValue
-                );
-                }
-                );
-
-
-                </script>
-
-            </form>
-
+            </div>
         </div>
-
     </div>
 
-</body>
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">管理資訊</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label" for="department">權責單位</label>
+                        <input class="input" type="text" id="department" name="department"
+                               value="{{ form.department if form else '' }}">
+                    </div>
 
-</html>
+                    <div class="field">
+                        <label class="label" for="risk_owner">保管單位(風險擁有者)</label>
+                        <input class="input" type="text" id="risk_owner" name="risk_owner"
+                               value="{{ form.risk_owner if form else '' }}">
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="use_department">使用單位</label>
+                        <input class="input" type="text" id="use_department" name="use_department"
+                               value="{{ form.use_department if form else '' }}">
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="location">放置地點</label>
+                        <input class="input" type="text" id="location" name="location"
+                               value="{{ form.location if form else '' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">資產說明</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="field">
+                    <label class="label" for="description">資產描述<span class="required">*</span></label>
+                    <textarea class="textarea" id="description" name="description" rows="5" required>{{ form.description if form else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">CIA / Legal</h2>
+            <span class="section__hint">資產價值取 C・I・A・L 四項最大值</span>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label" for="confidentiality">機密性(C)<span class="required">*</span></label>
+                        <select class="select" id="confidentiality" name="confidentiality" required>
+                            <option value="">請選擇</option>
+                            {% for i in range(1,6) %}
+                            <option value="{{ i }}" {% if form and form.confidentiality|string==i|string %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="integrity">完整性(I)<span class="required">*</span></label>
+                        <select class="select" id="integrity" name="integrity" required>
+                            <option value="">請選擇</option>
+                            {% for i in range(1,6) %}
+                            <option value="{{ i }}" {% if form and form.integrity|string==i|string %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="availability">可用性(A)<span class="required">*</span></label>
+                        <select class="select" id="availability" name="availability" required>
+                            <option value="">請選擇</option>
+                            {% for i in range(1,6) %}
+                            <option value="{{ i }}" {% if form and form.availability|string==i|string %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label class="label" for="legality">適法性(L)<span class="required">*</span></label>
+                        <select class="select" id="legality" name="legality" onchange="updateAssetValue()" required>
+                            <option value="">請選擇</option>
+                            {% for i in range(1,6) %}
+                            <option value="{{ i }}" {% if form and form.legality|string==i|string %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field" style="max-width: 160px; margin-top: var(--sp-4);">
+                    <label class="label" for="asset_value">資產價值（自動計算）</label>
+                    <input class="input" type="text" id="asset_value"
+                           value="{{ form.asset_value if form else '' }}" readonly>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <button type="submit" class="btn btn--primary">確認新增</button>
+        <a class="btn" href="/">取消</a>
+    </div>
+
+</form>
+
+<script>
+function updateAssetValue(){
+    let c = Number(document.querySelector('[name="confidentiality"]').value);
+    let i = Number(document.querySelector('[name="integrity"]').value);
+    let a = Number(document.querySelector('[name="availability"]').value);
+    let l = Number(document.querySelector('[name="legality"]').value);
+
+    let max = Math.max(c,i,a,l);
+
+    document.getElementById("asset_value").value=max;
+}
+
+document.querySelectorAll("select").forEach(
+    item=>{
+        item.addEventListener("change", updateAssetValue);
+    }
+);
+</script>
+
+{% endblock %}

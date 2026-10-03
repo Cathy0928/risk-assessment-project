@@ -1,927 +1,189 @@
-<!DOCTYPE html>
-
-<html lang="zh-TW">
-
-<head>
-
-    <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>
-        RiskGenie - AI 建議
-    </title>
-
-
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', filename='css/style.css') }}"
-    >
-
-
-    <style>
-
-        /* =========================================================
-           Main
-        ========================================================= */
-
-        .ai-page-container {
-
-            max-width: 1100px;
-
-            margin: 0 auto;
-        }
-
-
-        .ai-card {
-
-            background: white;
-
-            border-radius: 10px;
-
-            padding: 25px;
-
-            margin-bottom: 20px;
-
-            box-shadow:
-                0 2px 8px rgba(0,0,0,0.08);
-        }
-
-
-        .ai-card h2 {
-
-            margin-top: 0;
-
-            color: #333;
-
-            border-bottom:
-                2px solid #007bff;
-
-            padding-bottom: 10px;
-        }
-
-
-        .ai-card h3 {
-
-            color: #333;
-
-            margin-top: 25px;
-        }
-
-
-        /* =========================================================
-           Risk Table
-        ========================================================= */
-
-        .risk-table {
-
-            width: 100%;
-
-            border-collapse: collapse;
-        }
-
-
-        .risk-table th,
-        .risk-table td {
-
-            padding: 12px 15px;
-
-            border-bottom:
-                1px solid #e5e7eb;
-
-            text-align: left;
-        }
-
-
-        .risk-table th {
-
-            width: 200px;
-
-            background:
-                #f8fafc;
-
-            font-weight: 600;
-        }
-
-
-        /* =========================================================
-           Risk Level
-        ========================================================= */
-
-        .risk-level {
-
-            display: inline-block;
-
-            padding: 6px 14px;
-
-            border-radius: 5px;
-
-            background: #dc3545;
-
-            color: white;
-
-            font-weight: bold;
-        }
-
-
-        /* =========================================================
-           AI Advice
-        ========================================================= */
-
-        .ai-advice {
-
-            background:
-                #f8fafc;
-
-            border-left:
-                5px solid #007bff;
-
-            border-radius: 5px;
-
-            padding: 25px;
-
-            white-space: pre-wrap;
-
-            line-height: 1.9;
-
-            color: #333;
-
-            font-size: 16px;
-        }
-
-
-        /* =========================================================
-           Loading
-        ========================================================= */
-
-        #loadingMessage {
-
-            text-align: center;
-
-            padding: 60px;
-
-            color: #666;
-
-            font-size: 18px;
-        }
-
-
-        /* =========================================================
-           Empty
-        ========================================================= */
-
-        #emptyMessage {
-
-            display: none;
-
-            background: white;
-
-            padding: 40px;
-
-            text-align: center;
-
-            border-radius: 10px;
-
-            box-shadow:
-                0 2px 8px rgba(0,0,0,0.08);
-        }
-
-
-        /* =========================================================
-           Back Button
-        ========================================================= */
-
-        .back-button {
-
-            display: inline-block;
-
-            padding: 10px 20px;
-
-            background: #007bff;
-
-            color: white;
-
-            text-decoration: none;
-
-            border-radius: 5px;
-
-            font-weight: bold;
-
-            margin-bottom: 20px;
-        }
-
-
-        .back-button:hover {
-
-            background: #0056b3;
-        }
-
-
-        /* =========================================================
-           AI Header
-        ========================================================= */
-
-        .ai-header {
-
-            display: flex;
-
-            justify-content: space-between;
-
-            align-items: center;
-
-            margin-bottom: 20px;
-        }
-
-
-        .ai-header h1 {
-
-            margin: 0;
-        }
-
-
-        @media (max-width: 700px) {
-
-            .risk-table th {
-
-                width: 130px;
-            }
-
-
-            .ai-header {
-
-                flex-direction: column;
-
-                align-items: flex-start;
-
-                gap: 10px;
-            }
-
-        }
-
-    </style>
-
-</head>
-
-
-<body>
-
-
-<!-- ============================================================
-     Sidebar
-============================================================ -->
-
-<div class="sidebar">
-
-    <div class="sidebar-title">
-        RiskGenie
+{% extends "base.html" %}
+{% from "_components.html" import page_header, empty_state %}
+{% set crumb_section = "風險管理" %}
+
+{% block title %}AI 輔助分析{% endblock %}
+{% block crumb_page %}AI 輔助分析{% endblock %}
+
+{% block content %}
+
+{% call page_header("AI 輔助分析", "AI 根據目前評鑑資料提供的第二意見，實際處置仍由使用者判斷與確認。") %}
+    <a class="btn" href="{{ url_for('risk.risk_assessment_page') }}">返回風險評鑑</a>
+{% endcall %}
+
+<div id="loadingMessage" class="empty"><p class="empty__desc">正在載入 AI 分析結果...</p></div>
+
+<div id="emptyMessage" style="display:none;">
+    {% call empty_state("尚無 AI 建議", "請先到「風險評鑑」頁面完成風險計算，再產生 AI 建議。") %}
+        <a class="btn btn--primary" href="{{ url_for('risk.risk_assessment_page') }}">前往風險評鑑</a>
+    {% endcall %}
+</div>
+
+<div id="aiResult" style="display:none;">
+
+    <!-- =================================================
+         1. 評鑑摘要
+    ================================================== -->
+
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">評鑑摘要</h2>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div style="display:flex; align-items:baseline; gap: var(--sp-5); flex-wrap: wrap; margin-bottom: var(--sp-4);">
+                    <div>
+                        <div class="stat__label">資產</div>
+                        <div class="text-strong" id="assetName">-</div>
+                    </div>
+                    <div>
+                        <div class="stat__label">風險分數</div>
+                        <div id="riskScore" style="font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1;">-</div>
+                    </div>
+                    <div>
+                        <div class="stat__label">風險等級</div>
+                        <span id="riskLevel" class="badge">-</span>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="table">
+                        <tbody>
+                            <tr><th>資產類型</th><td id="assetType">-</td></tr>
+                            <tr><th>資產描述</th><td id="assetDescription">-</td></tr>
+                            <tr><th>威脅與弱點</th><td id="threatDescription">-</td></tr>
+                            <tr><th>C・I・A・L</th><td><span id="confidentiality">-</span> ・ <span id="integrity">-</span> ・ <span id="availability">-</span> ・ <span id="legality">-</span></td></tr>
+                            <tr><th>CVSS</th><td id="cvssScore">-</td></tr>
+                            <tr><th>發生機率</th><td id="likelihoodScore">-</td></tr>
+                            <tr><th>Impact Score</th><td id="impactScore">-</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
+    <!-- =================================================
+         2. AI 輔助建議
+    ================================================== -->
 
-    <a href="{{ url_for('home') }}">
-
-        <button class="menu-btn">
-            首 頁
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('asset_summary') }}">
-
-        <button class="menu-btn">
-            資產總表
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('risk.risk_assessment_page') }}">
-
-        <button class="menu-btn">
-            風險評鑑
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('risk.weight_setting_page') }}">
-
-        <button class="menu-btn">
-            權重設定
-        </button>
-
-    </a>
-
-
-    <a href="{{ url_for('risk.ai_advice_page') }}">
-
-        <button class="menu-btn active">
-            AI建議
-        </button>
-
-    </a>
-
-
-    <button class="menu-btn">
-        建議報表
-    </button>
-
-
-    {% if session.get('role_name') == '系統管理員' %}
-    <a href="{{ url_for('admin_users_page') }}">
-        <button class="menu-btn">
-            帳號管理
-        </button>
-    </a>
-    {% else %}
-    <button class="menu-btn">
-        帳號管理
-    </button>
-    {% endif %}
-
-
-    <div class="menu-footer">
-
-        <div class="session-user">
-
-            <strong>
-                {{ session.get("username","使用者") }}
-            </strong>
-
-            <br>
-
-            {{ session.get("role_name","") }}
-
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">AI 輔助建議</h2>
+            <span class="section__hint" id="generatedTimeWrap">
+                <span id="generatedTimeLabel">評鑑建立時間</span>：<span id="generatedTime">-</span>
+            </span>
         </div>
+        <div class="panel">
+            <div class="panel__body">
+                <div id="aiAdviceText" style="white-space: pre-wrap; line-height: var(--lh-body);"></div>
+            </div>
+        </div>
+    </div>
 
+    <!-- =================================================
+         3. RiskOps 處置
+    ================================================== -->
 
-        <form
-            action="{{ url_for('logout') }}"
-            method="post"
-        >
+    <div class="section">
+        <div class="section__header">
+            <h2 class="section__title">RiskOps 處置</h2>
+            <span class="section__hint">依據 AI 建議（或自行判斷）記錄實際處置進度</span>
+        </div>
+        <div class="panel">
+            <div class="panel__body">
 
-            <button
-                class="menu-btn logout-btn"
-                type="submit"
-            >
-                登出
-            </button>
+                <div class="form-grid">
+                    <div class="field">
+                        <label class="label" for="riskOpsStatus">處置狀態</label>
+                        <select id="riskOpsStatus" class="select">
+                            <option value="待處理">待處理</option>
+                            <option value="處理中">處理中</option>
+                            <option value="待確認">待確認</option>
+                            <option value="已完成">已完成</option>
+                        </select>
+                    </div>
 
-        </form>
+                    <div class="field">
+                        <label class="label">是否採用 AI 建議</label>
+                        <div class="inline" style="gap: var(--sp-4); min-height:34px;">
+                            <label class="inline" style="gap: var(--sp-1);">
+                                <input type="radio" name="adoptAiSuggestion" value="yes" checked>
+                                採用
+                            </label>
+                            <label class="inline" style="gap: var(--sp-1);">
+                                <input type="radio" name="adoptAiSuggestion" value="no">
+                                不採用
+                            </label>
+                        </div>
+                    </div>
 
+                    <div class="field">
+                        <label class="label" for="treatmentDueDate">預計完成日期</label>
+                        <input type="date" id="treatmentDueDate" class="input">
+                    </div>
+                </div>
+
+                <div class="field" style="margin-top: var(--sp-4);">
+                    <label class="label" for="treatmentNote">實際改善處理內容</label>
+                    <textarea id="treatmentNote" class="textarea" rows="6"
+                              placeholder="請填寫實際採取的改善或處理措施..."></textarea>
+                </div>
+
+                <div class="field" style="margin-top: var(--sp-4);">
+                    <label class="label" for="evidenceUrl">改善證據</label>
+                    <input type="url" id="evidenceUrl" class="input" placeholder="例如：https://example.com/evidence">
+                </div>
+
+                <div class="toolbar" style="margin-top: var(--sp-5);">
+                    <button type="button" id="saveRiskOpsButton" class="btn btn--primary">儲存 RiskOps</button>
+                </div>
+
+                <div id="riskOpsMessage" class="help" style="margin-top: var(--sp-2);"></div>
+
+            </div>
+        </div>
     </div>
 
 </div>
 
+{% endblock %}
 
-<!-- ============================================================
-     Main
-============================================================ -->
-
-<div class="main-content">
-
-    <div class="content-wrapper">
-
-        <div class="ai-page-container">
-
-
-            <div class="ai-header">
-
-                <h1 class="page-title">
-
-                    🤖 AI 風險建議
-
-                </h1>
-
-
-                <a
-                    href="{{ url_for('risk.risk_assessment_page') }}"
-                    class="back-button"
-                >
-                    ← 返回風險評鑑
-                </a>
-
-            </div>
-
-
-            <!-- =================================================
-                 Loading
-            ================================================== -->
-
-            <div id="loadingMessage">
-
-                ⏳ 正在載入 AI 分析結果...
-
-            </div>
-
-
-            <!-- =================================================
-                 Empty
-            ================================================== -->
-
-            <div id="emptyMessage">
-
-                <h2>
-                    尚無 AI 建議
-                </h2>
-
-
-                <p>
-                    請先到「風險評鑑」頁面完成風險計算，
-                    再按下「AI建議」產生分析結果。
-                </p>
-
-
-                <a
-                    href="{{ url_for('risk.risk_assessment_page') }}"
-                    class="back-button"
-                >
-                    前往風險評鑑
-                </a>
-
-            </div>
-
-
-            <!-- =================================================
-                 AI Result
-            ================================================== -->
-
-            <div
-                id="aiResult"
-                style="display:none;"
-            >
-
-
-                <!-- =================================================
-                     Asset Information
-                ================================================== -->
-
-                <div class="ai-card">
-
-                    <h2>
-                        🖥️ 資產資訊
-                    </h2>
-
-
-                    <table class="risk-table">
-
-                        <tbody>
-
-                            <tr>
-
-                                <th>
-                                    資產名稱
-                                </th>
-
-                                <td id="assetName">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    資產類型
-                                </th>
-
-                                <td id="assetType">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    資產描述
-                                </th>
-
-                                <td id="assetDescription">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    威脅與弱點
-                                </th>
-
-                                <td id="threatDescription">
-                                    -
-                                </td>
-
-                            </tr>
-
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-
-                <!-- =================================================
-                     Risk Information
-                ================================================== -->
-
-                <div class="ai-card">
-
-                    <h2>
-                        📊 風險評鑑結果
-                    </h2>
-
-
-                    <table class="risk-table">
-
-                        <tbody>
-
-                            <tr>
-
-                                <th>
-                                    機密性 C
-                                </th>
-
-                                <td id="confidentiality">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    完整性 I
-                                </th>
-
-                                <td id="integrity">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    可用性 A
-                                </th>
-
-                                <td id="availability">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    適法性 L
-                                </th>
-
-                                <td id="legality">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    CVSS
-                                </th>
-
-                                <td id="cvssScore">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    發生機率
-                                </th>
-
-                                <td id="likelihoodScore">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    Impact Score
-                                </th>
-
-                                <td id="impactScore">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    Risk Score
-                                </th>
-
-                                <td id="riskScore">
-                                    -
-                                </td>
-
-                            </tr>
-
-
-                            <tr>
-
-                                <th>
-                                    Risk Level
-                                </th>
-
-                                <td>
-
-                                    <span
-                                        id="riskLevel"
-                                        class="risk-level"
-                                    >
-                                        -
-                                    </span>
-
-                                </td>
-
-                            </tr>
-
-                        </tbody>
-
-                    </table>
-
-                </div>
-
-
-                <!-- =================================================
-                     AI Advice
-                ================================================== -->
-
-                <div class="ai-card">
-
-                    <h2>
-                        🛡️ AI 分析與改善建議
-                    </h2>
-
-
-                    <div
-                        id="aiAdviceText"
-                        class="ai-advice"
-                    >
-                    </div>
-
-                </div>
-                <!-- =================================================
-                     RiskOps Lite
-                ================================================= -->
-
-                <div class="ai-card">
-
-                    <h2>
-                        ⚙️ RiskOps Lite 風險處理
-                    </h2>
-
-                    <p>
-                        請依據 AI 改善建議進行風險處理，並更新目前處理狀態。
-                    </p>
-
-
-                    <!-- AI 建議是否採用 -->
-
-                    <h3>
-                        是否採用 AI 改善建議
-                    </h3>
-
-                    <label>
-                        <input
-                            type="radio"
-                            name="adoptAiSuggestion"
-                            value="yes"
-                            checked
-                        >
-                        採用
-                    </label>
-
-                    <label style="margin-left:20px;">
-                        <input
-                            type="radio"
-                            name="adoptAiSuggestion"
-                            value="no"
-                        >
-                        不採用
-                    </label>
-
-
-                    <!-- 實際改善處理內容 -->
-
-                    <h3>
-                        實際改善處理內容
-                    </h3>
-
-                    <textarea
-                        id="treatmentNote"
-                        rows="5"
-                        style="
-                            width:100%;
-                            box-sizing:border-box;
-                            padding:12px;
-                            border:1px solid #ddd;
-                            border-radius:5px;
-                            resize:vertical;
-                        "
-                        placeholder="請填寫實際採取的改善或處理措施..."
-                    ></textarea>
-
-
-                    <!-- 預計完成日期 -->
-
-                    <h3>
-                        預計完成日期
-                    </h3>
-
-                    <input
-                        type="date"
-                        id="treatmentDueDate"
-                        style="
-                            padding:10px;
-                            border:1px solid #ddd;
-                            border-radius:5px;
-                        "
-                    >
-
-
-                    <!-- 改善證據 -->
-
-                    <h3>
-                        改善證據
-                    </h3>
-
-                    <input
-                        type="url"
-                        id="evidenceUrl"
-                        style="
-                            width:100%;
-                            box-sizing:border-box;
-                            padding:10px;
-                            border:1px solid #ddd;
-                            border-radius:5px;
-                        "
-                        placeholder="例如：https://example.com/evidence"
-                    >
-
-
-                    <!-- 風險狀態 -->
-
-                    <h3>
-                        風險狀態
-                    </h3>
-
-                    <select
-                        id="riskOpsStatus"
-                        style="
-                            padding:10px;
-                            border:1px solid #ddd;
-                            border-radius:5px;
-                            min-width:180px;
-                        "
-                    >
-                        <option value="待處理">
-                            待處理
-                        </option>
-
-                        <option value="處理中">
-                            處理中
-                        </option>
-
-                        <option value="待確認">
-                            待確認
-                        </option>
-
-                        <option value="已完成">
-                            已完成
-                        </option>
-                    </select>
-
-
-                    <!-- 儲存 -->
-
-                    <div style="margin-top:25px;">
-
-                        <button
-                            type="button"
-                            id="saveRiskOpsButton"
-                            class="back-button"
-                        >
-                            儲存 RiskOps
-                        </button>
-
-                    </div>
-
-
-                    <!-- 儲存結果 -->
-
-                    <div
-                        id="riskOpsMessage"
-                        style="
-                            margin-top:15px;
-                            font-weight:bold;
-                        "
-                    ></div>
-
-                </div>
-
-                <!-- =================================================
-                     Generated Time
-                ================================================== -->
-
-                <div
-                    style="
-                        text-align:right;
-                        color:#777;
-                        margin-top:10px;
-                    "
-                >
-
-                    AI 建議產生時間：
-
-                    <span id="generatedTime">
-                        -
-                    </span>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
-
+{% block scripts %}
 <script>
 
 /* ============================================================
    頁面初始化
 ============================================================ */
 
-document.addEventListener(
-    'DOMContentLoaded',
-    async function() {
+document.addEventListener('DOMContentLoaded', async function () {
 
-        // 先等 AI 建議（含重新開啟歷史評鑑的情況）載入完成，
-        // 確保 sessionStorage 已經有正確的 assessment_id，
-        // RiskOps 表單才會讀到對應的那一筆。
-        await loadAIAdvice();
-        loadRiskOps();
+    // 先等 AI 建議（含重新開啟歷史評鑑的情況）載入完成，
+    // 確保 sessionStorage 已經有正確的 assessment_id，
+    // RiskOps 表單才會讀到對應的那一筆。
+    await loadAIAdvice();
+    loadRiskOps();
 
-    }
-);
+});
 
 
 /* ============================================================
    載入 AI 結果
 ============================================================ */
 
+function riskLevelBadgeClass(level) {
+    const text = String(level || '');
+    if (text.indexOf('極高') !== -1 || text.indexOf('高') !== -1) { return 'badge--danger'; }
+    if (text.indexOf('中') !== -1) { return 'badge--warning'; }
+    if (text.indexOf('低') !== -1) { return 'badge--info'; }
+    return '';
+}
+
 async function loadAIAdvice() {
 
-    const loading =
-        document.getElementById(
-            'loadingMessage'
-        );
-
-
-    const empty =
-        document.getElementById(
-            'emptyMessage'
-        );
-
-
-    const result =
-        document.getElementById(
-            'aiResult'
-        );
-
+    const loading = document.getElementById('loadingMessage');
+    const empty = document.getElementById('emptyMessage');
+    const result = document.getElementById('aiResult');
 
     /* ========================================================
        重新開啟歷史評鑑：URL 帶 assessment_id 時，
@@ -929,112 +191,50 @@ async function loadAIAdvice() {
        （重新登入、換裝置後仍能找到原本紀錄）。
     ======================================================== */
 
-    const urlAssessmentId =
-        new URLSearchParams(
-            window.location.search
-        ).get('assessment_id');
-
+    const urlAssessmentId = new URLSearchParams(window.location.search).get('assessment_id');
 
     try {
 
         let data = null;
 
-
         if (urlAssessmentId) {
 
-            const response =
-                await fetch(
-                    `/api/risk-assessments/${urlAssessmentId}/riskops`
-                );
+            const response = await fetch(`/api/risk-assessments/${urlAssessmentId}/riskops`);
+            const apiResult = await response.json();
 
-
-            const apiResult =
-                await response.json();
-
-
-            if (
-                !response.ok ||
-                !apiResult.success
-            ) {
-
-                throw new Error(
-                    apiResult.error ||
-                    '找不到此風險評鑑紀錄'
-                );
+            if (!response.ok || !apiResult.success) {
+                throw new Error(apiResult.error || '找不到此風險評鑑紀錄');
             }
 
-
-            const assessment =
-                apiResult.assessment;
-
+            const assessment = apiResult.assessment;
 
             data = {
-
-                asset_id:
-                    assessment.asset_id,
-
-                assessment_id:
-                    assessment.id,
-
-                asset_name:
-                    assessment.asset_name,
-
-                asset_type:
-                    assessment.asset_type,
-
-                description:
-                    assessment.description,
-
-                threat_description:
-                    assessment.threat_description,
-
-                advice:
-                    assessment.ai_suggestion,
-
-                status:
-                    assessment.status,
-
-                generated_at:
-                    assessment.created_at,
-
+                asset_id: assessment.asset_id,
+                assessment_id: assessment.id,
+                asset_name: assessment.asset_name,
+                asset_type: assessment.asset_type,
+                description: assessment.description,
+                threat_description: assessment.threat_description,
+                advice: assessment.ai_suggestion,
+                status: assessment.status,
+                assessment_created_at: assessment.created_at,
                 risk_data: {
-
-                    confidentiality:
-                        assessment.confidentiality,
-
-                    integrity:
-                        assessment.integrity,
-
-                    availability:
-                        assessment.availability,
-
-                    legality:
-                        assessment.legality,
-
-                    cvss_score:
-                        assessment.cvss_score,
-
-                    likelihood_score:
-                        assessment.likelihood_score,
-
-                    impact_score:
-                        assessment.impact_score,
-
-                    risk_score:
-                        assessment.risk_score,
-
-                    risk_level:
-                        assessment.risk_level
+                    confidentiality: assessment.confidentiality,
+                    integrity: assessment.integrity,
+                    availability: assessment.availability,
+                    legality: assessment.legality,
+                    cvss_score: assessment.cvss_score,
+                    likelihood_score: assessment.likelihood_score,
+                    impact_score: assessment.impact_score,
+                    risk_score: assessment.risk_score,
+                    risk_level: assessment.risk_level
                 }
             };
 
             // 存進 sessionStorage，讓既有的 RiskOps 表單邏輯
             // （loadRiskOps / saveRiskOps）不用另外改寫也能沿用；
             // 但「載入的來源」仍是後端，不是 sessionStorage。
-            sessionStorage.setItem(
-                'riskGenieAIAdvice',
-                JSON.stringify(data)
-            );
+            sessionStorage.setItem('riskGenieAIAdvice', JSON.stringify(data));
 
         } else {
 
@@ -1043,199 +243,92 @@ async function loadAIAdvice() {
                （剛產生完 AI 建議、還在同一個 session 的情況）
             ==================================================== */
 
-            const savedData =
-                sessionStorage.getItem(
-                    'riskGenieAIAdvice'
-                );
-
+            const savedData = sessionStorage.getItem('riskGenieAIAdvice');
 
             if (!savedData) {
-
-                loading.style.display =
-                    'none';
-
-
-                empty.style.display =
-                    'block';
-
-
+                loading.style.display = 'none';
+                empty.style.display = 'block';
                 return;
             }
 
-
-            data =
-                JSON.parse(
-                    savedData
-                );
+            data = JSON.parse(savedData);
         }
 
-
-        console.log(
-            'AI 建議資料：',
-            data
-        );
-
+        console.log('AI 建議資料：', data);
 
         /* ====================================================
            顯示資產資料
         ==================================================== */
 
-        setText(
-            'assetName',
-            data.asset_name
-        );
-
-
-        setText(
-            'assetType',
-            data.asset_type
-        );
-
-
-        setText(
-            'assetDescription',
-            data.description
-        );
-
-
-        setText(
-            'threatDescription',
-            data.threat_description
-        );
-
+        setText('assetName', data.asset_name);
+        setText('assetType', data.asset_type);
+        setText('assetDescription', data.description);
+        setText('threatDescription', data.threat_description);
 
         /* ====================================================
            風險資料
         ==================================================== */
 
-        const risk =
-            data.risk_data || {};
+        const risk = data.risk_data || {};
 
+        setText('confidentiality', risk.confidentiality);
+        setText('integrity', risk.integrity);
+        setText('availability', risk.availability);
+        setText('legality', risk.legality);
+        setText('cvssScore', risk.cvss_score);
+        setText('likelihoodScore', risk.likelihood_score);
+        setText('impactScore', risk.impact_score);
+        setText('riskScore', risk.risk_score);
 
-        setText(
-            'confidentiality',
-            risk.confidentiality
-        );
-
-
-        setText(
-            'integrity',
-            risk.integrity
-        );
-
-
-        setText(
-            'availability',
-            risk.availability
-        );
-
-
-        setText(
-            'legality',
-            risk.legality
-        );
-
-
-        setText(
-            'cvssScore',
-            risk.cvss_score
-        );
-
-
-        setText(
-            'likelihoodScore',
-            risk.likelihood_score
-        );
-
-
-        setText(
-            'impactScore',
-            risk.impact_score
-        );
-
-
-        setText(
-            'riskScore',
-            risk.risk_score
-        );
-
-
-        setText(
-            'riskLevel',
-            risk.risk_level
-        );
-
+        const levelBadge = document.getElementById('riskLevel');
+        levelBadge.textContent = (risk.risk_level === null || risk.risk_level === undefined || risk.risk_level === '')
+            ? '-' : risk.risk_level;
+        levelBadge.className = 'badge ' + riskLevelBadgeClass(risk.risk_level);
 
         /* ====================================================
            AI 建議
         ==================================================== */
 
-        const advice =
-            document.getElementById(
-                'aiAdviceText'
-            );
-
-
-        advice.innerText =
-            data.advice ||
-            'AI 未產生建議。';
-
+        document.getElementById('aiAdviceText').innerText = data.advice || 'AI 未產生建議。';
 
         /* ====================================================
            時間
+
+           只有「這次產生」才知道真正的 AI 建議產生時間
+           （confirmAIAdvice() 當下寫入 sessionStorage 的 generated_at）。
+           資料庫沒有獨立的 AI 產生時間欄位，重新開啟歷史評鑑時
+           唯一拿得到的是 assessment.created_at（評鑑建立時間），
+           不能把它標成「AI 建議產生時間」── 那是風險評鑑被儲存
+           的時間，不是 AI 建議被產生的時間，兩者可能相差數十秒
+           到數分鐘。
         ==================================================== */
 
-        if (
-            data.generated_at
-        ) {
+        const displayedTimestamp = data.generated_at || data.assessment_created_at;
 
-            const date =
-                new Date(
-                    data.generated_at
-                );
+        if (displayedTimestamp) {
 
+            document.getElementById('generatedTimeLabel').innerText =
+                data.generated_at ? 'AI 建議產生時間' : '評鑑建立時間';
 
-            document.getElementById(
-                'generatedTime'
-            ).innerText =
-                date.toLocaleString(
-                    'zh-TW'
-                );
+            const date = new Date(displayedTimestamp);
+            document.getElementById('generatedTime').innerText = date.toLocaleString('zh-TW');
 
+        } else {
+            document.getElementById('generatedTimeWrap').style.display = 'none';
         }
-
 
         /* ====================================================
            顯示結果
         ==================================================== */
 
-        loading.style.display =
-            'none';
-
-
-        empty.style.display =
-            'none';
-
-
-        result.style.display =
-            'block';
-
+        loading.style.display = 'none';
+        empty.style.display = 'none';
+        result.style.display = 'block';
 
     } catch (error) {
-
-        console.error(
-            '讀取 AI 建議失敗：',
-            error
-        );
-
-
-        loading.style.display =
-            'none';
-
-
-        empty.style.display =
-            'block';
-
+        console.error('讀取 AI 建議失敗：', error);
+        loading.style.display = 'none';
+        empty.style.display = 'block';
     }
 
 }
@@ -1245,44 +338,19 @@ async function loadAIAdvice() {
    設定文字
 ============================================================ */
 
-function setText(
-    elementId,
-    value
-) {
-
-    const element =
-        document.getElementById(
-            elementId
-        );
-
-
-    if (!element) {
-
+function setText(elementId, value) {
+    const element = document.getElementById(elementId);
+    if (!element) { return; }
+    if (value === undefined || value === null || value === '') {
+        element.innerText = '-';
         return;
     }
-
-
-    if (
-        value === undefined ||
-        value === null ||
-        value === ''
-    ) {
-
-        element.innerText =
-            '-';
-
-        return;
-    }
-
-
-    element.innerText =
-        value;
-
+    element.innerText = value;
 }
 
 
 // =================================================
-// RiskOps Lite
+// RiskOps 處置
 // 載入目前資料 + 儲存 RiskOps
 // =================================================
 
@@ -1311,47 +379,32 @@ async function loadRiskOps() {
         }
 
         // 從後端取得目前 RiskOps 資料
-        const response = await fetch(
-            `/api/risk-assessments/${assessmentId}/riskops`
-        );
-
+        const response = await fetch(`/api/risk-assessments/${assessmentId}/riskops`);
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-            throw new Error(
-                result.error || '無法取得 RiskOps 資料'
-            );
+            throw new Error(result.error || '無法取得 RiskOps 資料');
         }
 
         const assessment = result.assessment;
 
         // 填入目前資料
-        document.getElementById('treatmentNote').value =
-            assessment.treatment_note || '';
-
-        document.getElementById('treatmentDueDate').value =
-            assessment.treatment_due_date || '';
-
-        document.getElementById('evidenceUrl').value =
-            assessment.evidence_url || '';
-
-        document.getElementById('riskOpsStatus').value =
-            assessment.status || '待處理';
+        document.getElementById('treatmentNote').value = assessment.treatment_note || '';
+        document.getElementById('treatmentDueDate').value = assessment.treatment_due_date || '';
+        document.getElementById('evidenceUrl').value = assessment.evidence_url || '';
+        document.getElementById('riskOpsStatus').value = assessment.status || '待處理';
 
         message.textContent = '';
 
     } catch (error) {
-
         console.error('載入 RiskOps 失敗：', error);
-
-        message.textContent =
-            '載入 RiskOps 資料失敗：' + error.message;
+        message.textContent = '載入 RiskOps 資料失敗：' + error.message;
     }
 }
 
 
 // =================================================
-// 儲存 RiskOps Lite
+// 儲存 RiskOps
 // =================================================
 
 async function saveRiskOps() {
@@ -1380,67 +433,44 @@ async function saveRiskOps() {
         }
 
         // 取得表單內容
-        const treatmentNote =
-            document.getElementById('treatmentNote').value.trim();
-
-        const treatmentDueDate =
-            document.getElementById('treatmentDueDate').value || null;
-
-        const evidenceUrl =
-            document.getElementById('evidenceUrl').value.trim();
-
-        const status =
-            document.getElementById('riskOpsStatus').value;
+        const treatmentNote = document.getElementById('treatmentNote').value.trim();
+        const treatmentDueDate = document.getElementById('treatmentDueDate').value || null;
+        const evidenceUrl = document.getElementById('evidenceUrl').value.trim();
+        const status = document.getElementById('riskOpsStatus').value;
 
         // 防止重複點擊
         button.disabled = true;
         button.textContent = '儲存中...';
 
         // 傳送到 Flask API
-        const response = await fetch(
-            `/api/risk-assessments/${assessmentId}/riskops`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    treatment_note: treatmentNote,
-                    treatment_due_date: treatmentDueDate,
-                    evidence_url: evidenceUrl,
-                    status: status
-                })
-            }
-        );
+        const response = await fetch(`/api/risk-assessments/${assessmentId}/riskops`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                treatment_note: treatmentNote,
+                treatment_due_date: treatmentDueDate,
+                evidence_url: evidenceUrl,
+                status: status
+            })
+        });
 
         const result = await response.json();
 
         if (!response.ok || !result.success) {
-            throw new Error(
-                result.error || 'RiskOps 儲存失敗'
-            );
+            throw new Error(result.error || 'RiskOps 儲存失敗');
         }
 
         // 顯示成功訊息
-        message.textContent =
-            '✅ RiskOps Lite 儲存成功！目前狀態：' + result.status;
+        message.textContent = 'RiskOps 儲存成功！目前狀態：' + result.status;
 
         // 更新 sessionStorage 裡面的 assessment 狀態
         data.status = result.status;
-        sessionStorage.setItem(
-            'riskGenieAIAdvice',
-            JSON.stringify(data)
-        );
+        sessionStorage.setItem('riskGenieAIAdvice', JSON.stringify(data));
 
     } catch (error) {
-
         console.error('儲存 RiskOps 失敗：', error);
-
-        message.textContent =
-            '❌ 儲存失敗：' + error.message;
-
+        message.textContent = '儲存失敗：' + error.message;
     } finally {
-
         button.disabled = false;
         button.textContent = '儲存 RiskOps';
     }
@@ -1451,71 +481,44 @@ async function saveRiskOps() {
 // 綁定按鈕
 // =================================================
 
-document
-    .getElementById('saveRiskOpsButton')
-    .addEventListener('click', saveRiskOps);
+document.getElementById('saveRiskOpsButton').addEventListener('click', saveRiskOps);
 
 
-// =================================================
-// 頁面載入時取得目前 RiskOps
-// =================================================
 // =================================================
 // AI 建議採用 / 不採用
 // =================================================
 
-document
-    .querySelectorAll('input[name="adoptAiSuggestion"]')
-    .forEach(function(radio) {
+document.querySelectorAll('input[name="adoptAiSuggestion"]').forEach(function (radio) {
 
-        radio.addEventListener('change', function() {
+    radio.addEventListener('change', function () {
 
-            const savedData =
-                sessionStorage.getItem('riskGenieAIAdvice');
+        const savedData = sessionStorage.getItem('riskGenieAIAdvice');
 
-            if (!savedData) {
-                return;
+        if (!savedData) { return; }
+
+        try {
+
+            const data = JSON.parse(savedData);
+            const treatmentNote = document.getElementById('treatmentNote');
+
+            // 選擇「採用」
+            if (this.value === 'yes') {
+                if (data.advice) {
+                    treatmentNote.value = data.advice;
+                }
+            }
+            // 選擇「不採用」
+            else {
+                treatmentNote.value = '';
             }
 
-            try {
-
-                const data =
-                    JSON.parse(savedData);
-
-                const treatmentNote =
-                    document.getElementById('treatmentNote');
-
-                // 選擇「採用」
-                if (this.value === 'yes') {
-
-                    if (data.advice) {
-
-                        treatmentNote.value =
-                            data.advice;
-                    }
-
-                }
-
-                // 選擇「不採用」
-                else {
-
-                    treatmentNote.value = '';
-
-                }
-
-            } catch (error) {
-
-                console.error(
-                    '讀取 AI 建議失敗：',
-                    error
-                );
-
-            }
-
-        });
+        } catch (error) {
+            console.error('讀取 AI 建議失敗：', error);
+        }
 
     });
 
-</script>
-</body>
+});
 
-</html>
+</script>
+{% endblock %}

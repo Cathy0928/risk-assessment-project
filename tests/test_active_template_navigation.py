@@ -55,6 +55,7 @@ ACTIVE_TEMPLATES = (
     "risk_assessment.html",
     "risk_report.html",
     "ai_advice.html",
+    "base.html",
 )
 
 # Templates with no render_template() call site anywhere in the Flask
@@ -69,6 +70,19 @@ DEAD_TEMPLATES = (
 )
 
 URL_FOR_PATTERN = re.compile(r"url_for\(\s*'([a-zA-Z_.][a-zA-Z0-9_.]*)'")
+
+REPORT_NAV_TEMPLATES = (
+    "index.html",
+    "admin_users.html",
+    "asset_add.html",
+    "asset_summary.html",
+    "asset_edit.html",
+    "asset_delete.html",
+    "weight_setting.html",
+    "risk_assessment.html",
+    "risk_report.html",
+    "ai_advice.html",
+)
 
 
 @pytest.fixture()
@@ -105,6 +119,34 @@ def login_as(client, company_id=7):
 
 def _valid_endpoints(app):
     return {rule.endpoint for rule in app.url_map.iter_rules()}
+
+
+@pytest.mark.parametrize("template_name", REPORT_NAV_TEMPLATES)
+def test_active_report_navigation_uses_clickable_risk_report_link(
+    template_name,
+):
+    source = (TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
+    if '{% extends "base.html" %}' in source:
+        # 導覽集中在共用 layout，頁面本身不再各自複製 sidebar。
+        source = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+    report_link = re.compile(
+        r"<a\b[^>]*href=\"\{\{\s*url_for\("
+        r"'risk\.risk_report'\)\s*\}\}\"[^>]*>"
+        r"(?:(?!</a>).)*(?:建議報表|風險報表)(?:(?!</a>).)*</a>",
+        re.DOTALL,
+    )
+
+    assert report_link.search(source), (
+        f"{template_name} 的報表導覽必須是可點擊連結，且使用 "
+        "url_for('risk.risk_report')。"
+    )
+
+
+def test_risk_report_endpoint_resolves_to_expected_url(app):
+    with app.test_request_context():
+        from flask import url_for
+
+        assert url_for("risk.risk_report") == "/risk-report"
 
 
 @pytest.mark.parametrize("template_name", ACTIVE_TEMPLATES)

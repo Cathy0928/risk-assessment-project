@@ -148,6 +148,13 @@ def login_as(client, role_name="user", company_id=7):
 
 ADMIN_LINK_NEEDLE = 'href="/admin/users"'
 
+# 已改用 base.html 的頁面：非管理員完全看不到「帳號管理」。
+# 尚未遷移的舊頁面仍保留沒有 href 的裝飾性按鈕，等遷移後再移出此清單。
+PAGES_ON_SHARED_LAYOUT = (
+    "/", "/summary", "/asset_add", "/asset_edit/701", "/weight_setting",
+    "/risk_assessment", "/ai-advice", "/risk-report", "/asset_delete/701",
+)
+
 # (page path, requires a DB-backed asset to exist at this id or not)
 PAGES_WITH_ADMIN_NAV_ITEM = (
     "/",
@@ -216,7 +223,10 @@ def test_non_admin_session_does_not_get_a_clickable_admin_link(
         f"{path} 在非管理員 session 下不應該出現可點擊的"
         "/admin/users 連結"
     )
-    assert "帳號管理" in body
+    if path in PAGES_ON_SHARED_LAYOUT:
+        assert "帳號管理" not in body
+    else:
+        assert "帳號管理" in body
 
 
 # ================================================================

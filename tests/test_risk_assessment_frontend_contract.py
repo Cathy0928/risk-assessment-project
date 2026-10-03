@@ -20,6 +20,7 @@ import importlib
 import re
 import sys
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -676,6 +677,67 @@ def test_save_api_contract_is_unchanged_and_returns_assessment_id(
     assert data["data"][0]["id"] == 9001
     assert data["assessment_id"] == data["data"][0]["id"]
     assert fake.records["risk_assessments"][0]["company_id"] == 7
+
+
+def test_save_writes_timezone_aware_assessment_timestamp(client, monkeypatch):
+    """The persisted instant must never be a naive server-local datetime.
+
+    A naive Asia/Taipei wall-clock value stored as UTC is the source of the
+    historical-page +8 hour regression.
+    """
+    fake = install_fake_supabase(monkeypatch, assets=[asset_record()])
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/save",
+        json=save_payload(),
+    )
+
+    assert response.status_code == 201
+    timestamp = fake.records["risk_assessments"][0]["created_at"]
+    parsed = datetime.fromisoformat(timestamp)
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() is not None
+
+
+def _as_taipei_time(timestamp):
+    """Model the single local conversion performed by the browser."""
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    return parsed.astimezone(timezone(timedelta(hours=8)))
+
+
+def test_ai_advice_timestamp_with_offset_is_not_shifted_twice():
+    rendered = _as_taipei_time(
+        "2026-10-03T15:34:41+08:00"
+    )
+
+    assert rendered.hour == 15
+    assert rendered.minute == 34
+
+
+def test_ai_advice_utc_timestamp_is_converted_to_taipei_once():
+    offset_time = _as_taipei_time(
+        "2026-10-03T15:34:41+08:00",
+    )
+    utc_time = _as_taipei_time(
+        "2026-10-03T07:34:41Z",
+    )
+
+    assert utc_time == offset_time
+    assert utc_time.hour == 15
+
+
+def test_historical_reopen_does_not_mislabel_assessment_created_at_as_ai_time():
+    source = _ai_advice_template_source()
+
+    assert not re.search(r"generated_at:\s*assessment\.created_at", source)
+    assert re.search(r"assessment_created_at:\s*assessment\.created_at", source)
+    assert 'id="generatedTimeLabel"' in source
+    assert "'AI 建議產生時間'" in source
+    assert "'評鑑建立時間'" in source
+    assert "data.generated_at ||" in source
+    assert "data.assessment_created_at" in source
+    assert ".toLocaleString(" in source
 
 
 def test_save_rejects_when_insert_result_is_empty(client, monkeypatch):
