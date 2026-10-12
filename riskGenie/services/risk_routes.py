@@ -816,14 +816,14 @@ def calculate_risk_api():
 
     except Exception as exc:
         logger.exception(
-            "風險計算失敗: %s",
+            "儲存評鑑紀錄失敗: %s",
             exc
         )
 
         return _json_error(
-            str(exc),
-            "CALCULATION_ERROR",
-            400
+            "儲存評鑑紀錄失敗",
+            "SAVE_ASSESSMENT_FAILED",
+            503
         )
 
 
@@ -980,6 +980,7 @@ def save_risk_assessment_api():
             assessment_payload,
             company_id=company_id
         )
+        print("DEBUG save result:", type(result), repr(result))
 
         # ====================================================
         # 一定要能從 insert 結果拿到合法的 assessment_id，
@@ -1050,11 +1051,10 @@ def save_risk_assessment_api():
         )
 
         return _json_error(
-            "儲存評鑑紀錄失敗",
+            f"儲存評鑑紀錄失敗：{type(exc).__name__}: {exc}",
             "SAVE_ASSESSMENT_FAILED",
             503
         )
-
 # ============================================================
 # RiskOps Lite
 #

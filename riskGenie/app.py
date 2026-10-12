@@ -23,8 +23,20 @@ import pandas as pd
 from dotenv import load_dotenv
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(PROJECT_ROOT / ".env", override=False)
+path1 = Path(r"D:\RiskGenie評評理\.env")
+path2 = Path(r"D:\RiskGenie評評理\riskGenie\.env")
+
+print("外層 .env 是否存在:", path1.exists())
+print("內層 .env 是否存在:", path2.exists())
+
+load_dotenv(dotenv_path=path1, override=True)
+load_dotenv(dotenv_path=path2, override=True)
+
+val = os.getenv("SUPABASE_SECRET_KEY")
+print("讀取到的金鑰長度:", len(val) if val else 0)
+
+with open(path2, "r", encoding="utf-8") as f:
+    print("內層 .env 包含的變數名稱有:", [line.split("=")[0].strip() for line in f if "=" in line and not line.strip().startswith("#")])
 
 
 # ===============================
