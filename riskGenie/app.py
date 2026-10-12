@@ -1,5 +1,13 @@
 # -*- coding: utf-8 -*-
 
+import sys
+from pathlib import Path
+
+# 強制將外層資料夾 (D:\RiskGenie評評理) 加入搜尋路徑，徹底解決 ModuleNotFoundError
+_BASE_DIR = Path(__file__).resolve().parent.parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
 from flask import (
     Flask,
     render_template,
@@ -22,26 +30,14 @@ import webbrowser
 import pandas as pd
 from dotenv import load_dotenv
 
-
-path1 = Path(r"D:\RiskGenie評評理\.env")
-path2 = Path(r"D:\RiskGenie評評理\riskGenie\.env")
-
-print("外層 .env 是否存在:", path1.exists())
-print("內層 .env 是否存在:", path2.exists())
-
-load_dotenv(dotenv_path=path1, override=True)
-load_dotenv(dotenv_path=path2, override=True)
+# 自動載入 .env（本機存在時載入，Render 等雲端環境則直接讀取 Environment Variables）
+load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 val = os.getenv("SUPABASE_SECRET_KEY")
-print("讀取到的金鑰長度:", len(val) if val else 0)
-
 if val:
     os.environ["SUPABASE_SECRET_KEY"] = str(val).strip()
     os.environ["SUPABASE_SERVICE_ROLE_KEY"] = str(val).strip()
-
-with open(path2, "r", encoding="utf-8") as f:
-    print("內層 .env 包含的變數名稱有:", [line.split("=")[0].strip() for line in f if "=" in line and not line.strip().startswith("#")])
-
 
 # ===============================
 # 環境與路徑設定 (解決 ModuleNotFoundError)
