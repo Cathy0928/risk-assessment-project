@@ -35,6 +35,10 @@ load_dotenv(dotenv_path=path2, override=True)
 val = os.getenv("SUPABASE_SECRET_KEY")
 print("讀取到的金鑰長度:", len(val) if val else 0)
 
+if val:
+    os.environ["SUPABASE_SECRET_KEY"] = str(val).strip()
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = str(val).strip()
+
 with open(path2, "r", encoding="utf-8") as f:
     print("內層 .env 包含的變數名稱有:", [line.split("=")[0].strip() for line in f if "=" in line and not line.strip().startswith("#")])
 

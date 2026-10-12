@@ -1,4 +1,7 @@
 """Centralized Supabase client creation for RiskGenie."""
+from dotenv import load_dotenv
+load_dotenv()
+
 
 import os
 
