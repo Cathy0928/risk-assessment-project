@@ -10,16 +10,22 @@ try:
 except ImportError:
     from supabase_client import get_supabase_client
 
+
 # ==========================
 # Environment
 # ==========================
-# 固定讀取專案根目錄的 .env
-BASE_DIR = Path(__file__).resolve().parents[1]
+logger = logging.getLogger(__name__)
+api_key = os.getenv("GEMINI_API_KEY")
+BASE_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = BASE_DIR / ".env"
 
 load_dotenv(ENV_FILE)
 
-logger = logging.getLogger(__name__)
+# 暫時診斷：確認環境變數是否成功載入
+logger.info(
+    "Gemini 設定檢查：GEMINI_API_KEY=%s",
+    "已載入" if api_key and api_key.strip() else "未載入"
+)
 
 # ==========================
 # Gemini
