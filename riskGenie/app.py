@@ -55,6 +55,7 @@ if RISKGENIE_DIR not in sys.path:
 # 載入 Blueprint
 try:
     from riskGenie.services.risk_routes import risk_bp
+    from riskGenie.services.cia_routes import cia_bp
     from riskGenie.services import admin_service, backup_service
     from riskGenie.services.supabase_client import (
         SupabaseConfigError,
@@ -64,6 +65,7 @@ try:
 
 except ImportError:
     from services.risk_routes import risk_bp
+    from services.cia_routes import cia_bp
     from services import admin_service, backup_service
     from services.supabase_client import (
         SupabaseConfigError,
@@ -386,6 +388,7 @@ def create_app(test_config=None):
     # 註冊 Blueprint 模組
     # ===============================
     app.register_blueprint(risk_bp)
+    app.register_blueprint(cia_bp)
 
 
     # ===============================
