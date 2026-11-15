@@ -57,10 +57,7 @@
                         <label class="label" for="cvssScore">CVSS 弱點嚴重度 (0-10)</label>
                         <input type="number" id="cvssScore" class="input" step="0.1" min="0" max="10" value="7.5" oninput="invalidateCurrentResult()">
                     </div>
-                    <div class="field">
-                        <label class="label" for="likelihoodScore">發生機率 (Likelihood 1-5)</label>
-                        <input type="number" id="likelihoodScore" class="input" min="1" max="5" value="3" oninput="invalidateCurrentResult()">
-                    </div>
+                    <input type="hidden" id="likelihoodScore" value="1">
                 </div>
 
                 <div class="toolbar" style="margin-top: var(--sp-5);">
@@ -685,11 +682,12 @@ async function saveAssessment() {
     const payload = {
         asset_id: parseInt(assetId),
         threat_description: document.getElementById('threatDescription').value,
-        impact_score: currentRiskData.impact_score,
-        likelihood_score: parseFloat(document.getElementById('likelihoodScore').value),
-        cvss_score: parseFloat(document.getElementById('cvssScore').value),
-        risk_score: currentRiskData.risk_score,
-        risk_level: currentRiskData.risk_level
+        // 只送原始輸入;impact / risk_score / risk_level 由伺服器重算
+        confidentiality: Number(document.getElementById('confidentiality').value),
+        integrity: Number(document.getElementById('integrity').value),
+        availability: Number(document.getElementById('availability').value),
+        legality: Number(document.getElementById('legality').value),
+        cvss_score: parseFloat(document.getElementById('cvssScore').value)
     };
 
     const saveBtn = document.getElementById('saveAssessmentBtn');

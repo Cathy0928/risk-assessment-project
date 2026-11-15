@@ -217,6 +217,10 @@ def valid_ai_payload():
 def valid_assessment_payload(**overrides):
     payload = {
         "asset_id": 701,
+        "confidentiality": 5,
+        "integrity": 4,
+        "availability": 5,
+        "legality": 3,
         "company_id": 99,
         "threat_description": "公開服務存在高風險弱點",
         "impact_score": 9.8,
@@ -252,10 +256,13 @@ def test_weighted_average_does_not_fall_back_to_max():
     weighted_average = RiskEngine.calculate_risk(
         1, 1, 5, 10, "weighted_average", weights
     )
-    max_value = RiskEngine.calculate_risk(1, 1, 5, 10, "max", weights)
+    default_weights = RiskEngine.calculate_risk(1, 1, 5, 10)
 
-    assert weighted_average == 14
-    assert weighted_average != max_value
+    # Impact = (0.8*1 + 0.1*1 + 0.1*5) * 10 = 14;資產價值 5 -> 高(1.1);CVSS 10 -> critical(1.8)
+    assert weighted_average == 27.72
+    # 自訂權重會改變結果(預設 0.4/0.3/0.3 -> 22 * 1.98 = 43.56)
+    assert default_weights == 43.56
+    assert weighted_average != default_weights
 
 
 def test_save_assessment_requires_login(client):

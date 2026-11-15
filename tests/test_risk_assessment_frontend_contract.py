@@ -117,7 +117,6 @@ def test_calculate_risk_enables_save_button_on_success():
         "availability",
         "legality",
         "cvssScore",
-        "likelihoodScore",
         "threatDescription",
     ],
 )
@@ -275,9 +274,12 @@ def test_save_assessment_uses_current_risk_data_for_payload():
     source = _template_source()
     body = _function_body(source, "saveAssessment")
 
-    assert "currentRiskData.impact_score" in body
-    assert "currentRiskData.risk_score" in body
-    assert "currentRiskData.risk_level" in body
+    # 衍生值由伺服器重算:前端只送原始輸入,不再送 impact / risk_score / risk_level
+    for raw_field in ("confidentiality", "integrity", "availability", "legality", "cvss_score"):
+        assert raw_field in body
+    assert "impact_score:" not in body
+    assert "risk_score:" not in body
+    assert "risk_level:" not in body
 
 
 def test_save_assessment_guards_against_double_submit():
@@ -612,6 +614,10 @@ def calculate_payload(**overrides):
 def save_payload(**overrides):
     payload = {
         "asset_id": 701,
+        "confidentiality": 5,
+        "integrity": 4,
+        "availability": 5,
+        "legality": 3,
         "threat_description": "公開服務存在高風險弱點",
         "impact_score": 9.8,
         "likelihood_score": 5,
@@ -677,6 +683,53 @@ def test_save_api_contract_is_unchanged_and_returns_assessment_id(
     assert data["data"][0]["id"] == 9001
     assert data["assessment_id"] == data["data"][0]["id"]
     assert fake.records["risk_assessments"][0]["company_id"] == 7
+
+
+def test_save_ignores_forged_client_scores_and_recomputes(client, monkeypatch):
+    """前端偽造的 risk_score / risk_level / impact_score 不可進入資料庫。"""
+    fake = install_fake_supabase(monkeypatch, assets=[asset_record()])
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/save",
+        json=save_payload(risk_score=1, risk_level="低風險", impact_score=1, likelihood_score=5),
+    )
+
+    assert response.status_code == 201
+    stored = fake.records["risk_assessments"][0]
+    assert stored["risk_score"] == 93.06
+    assert stored["risk_level"] == "極高風險"
+    assert stored["impact_score"] == 47.0
+
+
+def test_save_rejects_out_of_range_cia(client, monkeypatch):
+    fake = install_fake_supabase(monkeypatch, assets=[asset_record()])
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/save",
+        json=save_payload(confidentiality=9),
+    )
+
+    assert response.status_code == 400
+    assert fake.records.get("risk_assessments", []) == []
+
+
+def test_calculate_api_returns_locked_formula_result(client, monkeypatch):
+    install_fake_supabase(monkeypatch, assets=[asset_record()])
+    login_as(client)
+
+    response = client.post(
+        "/api/risk-assessments/calculate",
+        json=calculate_payload(),
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["risk_score"] == 93.06
+    assert data["risk_level"] == "極高風險"
+    assert data["impact_score"] == 47.0
+    assert data["label"] == "高" and data["threat_level"] == "critical"
 
 
 def test_save_writes_timezone_aware_assessment_timestamp(client, monkeypatch):
