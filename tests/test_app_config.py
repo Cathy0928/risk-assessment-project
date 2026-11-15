@@ -13,6 +13,7 @@ REQUIRED_ENV = {
     "FLASK_SECRET_KEY": "dotenv-secret",
     "SUPABASE_URL": "https://example.supabase.co",
     "SUPABASE_ANON_KEY": "dotenv-anon-key",
+    "SUPABASE_SECRET_KEY": "dotenv-secret-key",
 }
 
 

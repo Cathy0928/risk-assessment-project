@@ -116,6 +116,8 @@ def test_active_template_has_no_large_pictograph_emoji(template_name):
 
 @pytest.fixture()
 def flask_app(monkeypatch):
+    from flask import session
+
     monkeypatch.setenv("FLASK_SECRET_KEY", "test-secret")
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-test-key")
@@ -126,6 +128,22 @@ def flask_app(monkeypatch):
 
     module = importlib.import_module("riskGenie.app")
     module = importlib.reload(module)
+
+    def load_current_profile(user_id):
+        return {
+            "id": user_id,
+            "username": session.get("username", "Test User"),
+            "email": "test@example.com",
+            "role_name": session.get("role_name") or session.get("role"),
+            "company_id": session.get("company_id"),
+            "is_active": True,
+        }
+
+    monkeypatch.setattr(
+        module,
+        "_load_current_authorization_profile",
+        load_current_profile,
+    )
     return module.create_app({"TESTING": True, "SECRET_KEY": "test-secret"})
 
 
