@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_components.html" import page_header %}
+{% set crumb_section = "資產管理" %}
+
+{% block title %}CIA AI 建議審核{% endblock %}
+{% block crumb_page %}CIA AI 建議審核{% endblock %}
+
+{% block content %}
+
+{% call page_header("CIA AI 建議審核", asset.asset_name) %}
+    <a class="btn" href="{{ url_for('asset_edit', id=asset_id) }}">返回編輯資產</a>
+{% endcall %}
+
+<div class="alert-stack">
+    <div class="alert alert--info">
+        本頁的 AI 建議僅供參考，系統不會自動覆蓋人工填寫的 C／I／A 數值。
+        請針對每個構面選擇「維持人工值」或「採用 AI 建議」。
+        評分尺度為本系統自訂之 1～5 分（非 ISO 27001 條文），
+        1=非常低、2=低、3=中等、4=高、5=非常高。
+    </div>
+    {% if error %}
+    <div class="alert alert--danger">{{ error }}</div>
+    {% endif %}
+</div>
+
+<div class="section">
+    <div class="section__header">
+        <h2 class="section__title">人工值與 AI 建議對照</h2>
+        <span class="section__hint">AI 建議與人工值不同的構面會以黃色標示</span>
+    </div>
+    <div class="panel">
+        <div class="table-wrap">
+            <table class="table" aria-label="CIA 人工值與 AI 建議對照">
+                <thead>
+                    <tr>
+                        <th>構面</th>
+                        <th class="col-num">人工原值</th>
+                        <th class="col-num">AI 建議值</th>
+                        <th>AI 理由</th>
+                        <th class="col-actions">動作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for dim, label in dimension_labels.items() %}
+                    {% set has_ai = ai_suggestion and ai_suggestion.success %}
+                    <tr>
+                        <td><span class="table__primary">{{ label }}</span></td>
+                        <td class="col-num">{{ asset[dim] }}</td>
+                        <td class="col-num">
+                            {% if has_ai %}
+                                {% if ai_suggestion.data[dim].rating != asset[dim] %}
+                                <span class="badge badge--warning">{{ ai_suggestion.data[dim].rating }}</span>
+                                {% else %}
+                                <span class="badge badge--info">{{ ai_suggestion.data[dim].rating }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-faint">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">
+                            {% if has_ai %}
+                                {{ ai_suggestion.data[dim].reason }}
+                            {% else %}
+                                尚未產生 AI 建議
+                            {% endif %}
+                        </td>
+                        <td class="col-actions">
+                            {% if has_ai %}
+                            <form class="inline" method="POST"
+                                  action="{{ url_for('cia.cia_review_adopt', asset_id=asset_id) }}">
+                                <input type="hidden" name="dimension" value="{{ dim }}">
+                                <input type="hidden" name="action" value="keep">
+                                <button type="submit" class="btn btn--sm">維持人工值</button>
+                            </form>
+                            <form class="inline" method="POST"
+                                  action="{{ url_for('cia.cia_review_adopt', asset_id=asset_id) }}">
+                                <input type="hidden" name="dimension" value="{{ dim }}">
+                                <input type="hidden" name="action" value="adopt">
+                                <button type="submit" class="btn btn--primary btn--sm">採用 AI 建議</button>
+                            </form>
+                            {% else %}
+                            <span class="text-faint">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('cia.cia_review_generate', asset_id=asset_id) }}">
+    <div class="toolbar" style="margin-top: var(--sp-4);">
+        <button type="submit" class="btn btn--primary">
+            {% if ai_suggestion %}重新產生 AI 建議{% else %}產生 AI 建議{% endif %}
+        </button>
+    </div>
+</form>
+
+{% endblock %}

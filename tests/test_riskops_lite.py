@@ -352,6 +352,10 @@ def valid_ai_payload(**overrides):
 def valid_assessment_payload(**overrides):
     payload = {
         "asset_id": 701,
+        "confidentiality": 5,
+        "integrity": 4,
+        "availability": 5,
+        "legality": 3,
         "threat_description": "公開服務存在高風險弱點",
         "impact_score": 9.8,
         "likelihood_score": 5,
@@ -686,11 +690,12 @@ def test_save_assessment_preserves_risk_score_and_does_not_touch_asset_cia(
     stored = fake.records["risk_assessments"][0]
 
     # 風險分數 / CVSS / 風險等級與送出的值完全一致，沒有被 RiskOps 欄位污染。
+    # 伺服器以原始輸入重算:C5 I4 A5 CVSS 9.8 -> Impact 47 x 1.1(高) x 1.8(critical) = 93.06
     assert stored["cvss_score"] == 9.8
-    assert stored["risk_score"] == 49
+    assert stored["risk_score"] == 93.06
     assert stored["risk_level"] == "極高風險"
-    assert stored["impact_score"] == 9.8
-    assert stored["likelihood_score"] == 5
+    assert stored["impact_score"] == 47.0
+    assert stored["likelihood_score"] == 1.8  # 欄位沿用,存放 ThreatMult
 
     # 新增的 RiskOps 欄位只有 status，且是額外附加，不是覆寫既有欄位。
     assert stored["status"] == "待處理"

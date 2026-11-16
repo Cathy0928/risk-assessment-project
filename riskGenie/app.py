@@ -16,7 +16,8 @@ from flask import (
     url_for,
     send_file,
     session,
-    jsonify
+    jsonify,
+    g,
 )
 
 from functools import wraps
@@ -55,23 +56,32 @@ if RISKGENIE_DIR not in sys.path:
 # 載入 Blueprint
 try:
     from riskGenie.services.risk_routes import risk_bp
+    from riskGenie.services.cia_routes import cia_bp
     from riskGenie.services import admin_service, backup_service
     from riskGenie.services.supabase_client import (
         SupabaseConfigError,
+        get_supabase_admin_client,
         get_supabase_client,
     )
     from riskGenie.services.asset_service import get_assets
 
 except ImportError:
     from services.risk_routes import risk_bp
+    from services.cia_routes import cia_bp
     from services import admin_service, backup_service
     from services.supabase_client import (
         SupabaseConfigError,
+        get_supabase_admin_client,
         get_supabase_client
     )
     from services.asset_service import get_assets
 
-REQUIRED_ENV_VARS = ("FLASK_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY")
+REQUIRED_ENV_VARS = (
+    "FLASK_SECRET_KEY",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SECRET_KEY",
+)
 LOGIN_ERROR_MESSAGE = "電子郵件或密碼錯誤"
 ACCOUNT_DISABLED_MESSAGE = "帳號已停用，請聯絡系統管理員"
 ADMIN_ROLE_NAME = "系統管理員"
@@ -83,6 +93,10 @@ UPDATE_USER_FIELDS = {"username", "role_id"}
 
 class AccountDisabledError(RuntimeError):
     """Raised when an authenticated user has a disabled public profile."""
+
+
+class AccountStatusUnavailableError(RuntimeError):
+    """Raised when a fresh authorization check cannot verify account status."""
 
 
 def _get_response_data(response):
@@ -153,18 +167,19 @@ class _LazySupabaseClient:
         return getattr(self._client, name)
 
 
-def _load_profile(supabase, user_id):
+def _load_profile(supabase, user_id, *, require_active_status=False):
     user_response = (
         supabase.table("users")
         .select("id, username, email, role_id, company_id")
         .eq("id", user_id)
-        .single()
+        .limit(1)
         .execute()
     )
     profile = _single_record(user_response)
     if not profile:
         raise LookupError("Supabase public.users did not return a profile.")
 
+    active_profile = None
     try:
         active_response = (
             supabase.table("users")
@@ -183,8 +198,16 @@ def _load_profile(supabase, user_id):
         missing_column = "is_active" in message and any(
             token in message for token in ("column", "schema", "field", "pgrst")
         )
-        if not missing_column:
+        if not missing_column or require_active_status:
             raise
+
+    if require_active_status and (
+        not active_profile
+        or not isinstance(active_profile.get("is_active"), bool)
+    ):
+        raise AccountStatusUnavailableError(
+            "Unable to verify the current account status."
+        )
 
     role_name = None
     role_id = profile.get("role_id")
@@ -206,11 +229,13 @@ def _load_profile(supabase, user_id):
         "email": profile.get("email"),
         "role_name": role_name,
         "company_id": profile.get("company_id"),
+        "is_active": active_profile.get("is_active") if active_profile else None,
     }
 
 
-def _store_login_session(profile):
-    session.clear()
+def _store_login_session(profile, *, clear_existing=True):
+    if clear_existing:
+        session.clear()
     session["user_id"] = profile["id"]
     session["username"] = profile["username"]
     session["email"] = profile["email"]
@@ -218,6 +243,39 @@ def _store_login_session(profile):
     session["role_name"] = profile["role_name"]
     session["company_id"] = profile["company_id"]
     session["logged_in"] = True
+
+
+def _load_current_authorization_profile(user_id):
+    profile = _load_profile(
+        get_supabase_admin_client(),
+        user_id,
+        require_active_status=True,
+    )
+    if profile.get("id") != user_id:
+        raise LookupError("Supabase returned a mismatched user profile.")
+    return profile
+
+
+def _refresh_current_authorization():
+    if getattr(g, "authorization_profile_refreshed", False):
+        return None
+
+    user_id = session.get("user_id")
+    if not session.get("logged_in") or not user_id:
+        session.clear()
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        profile = _load_current_authorization_profile(user_id)
+    except (AccountDisabledError, LookupError):
+        session.clear()
+        return jsonify({"error": "Unauthorized"}), 401
+    except Exception:
+        return jsonify({"error": "Authorization service unavailable"}), 503
+
+    _store_login_session(profile, clear_existing=False)
+    g.authorization_profile_refreshed = True
+    return None
 
 
 def _validation_error(field, message):
@@ -353,6 +411,9 @@ def admin_required(view_func):
     def wrapped(*args, **kwargs):
         if not session.get("logged_in"):
             return jsonify({"error": "Unauthorized"}), 401
+        authorization_error = _refresh_current_authorization()
+        if authorization_error is not None:
+            return authorization_error
         if _session_role_name() != ADMIN_ROLE_NAME:
             return jsonify({"error": "Forbidden"}), 403
         return view_func(*args, **kwargs)
@@ -386,6 +447,18 @@ def create_app(test_config=None):
     # 註冊 Blueprint 模組
     # ===============================
     app.register_blueprint(risk_bp)
+    app.register_blueprint(cia_bp)
+
+    @app.before_request
+    def refresh_api_write_authorization():
+        if request.path.startswith("/api/") and request.method in {
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+        } and session.get("logged_in"):
+            return _refresh_current_authorization()
+        return None
 
 
     # ===============================

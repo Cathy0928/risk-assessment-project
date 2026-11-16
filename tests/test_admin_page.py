@@ -2,6 +2,7 @@ import importlib
 import sys
 
 import pytest
+from flask import session
 
 
 @pytest.fixture
@@ -13,6 +14,22 @@ def app(monkeypatch):
 
     sys.modules.pop("riskGenie.app", None)
     app_module = importlib.import_module("riskGenie.app")
+
+    def load_current_profile(user_id):
+        return {
+            "id": user_id,
+            "username": session.get("username", "tester"),
+            "email": "tester@example.com",
+            "role_name": session.get("role_name") or session.get("role"),
+            "company_id": session.get("company_id"),
+            "is_active": True,
+        }
+
+    monkeypatch.setattr(
+        app_module,
+        "_load_current_authorization_profile",
+        load_current_profile,
+    )
     return app_module.create_app(
         {
             "TESTING": True,

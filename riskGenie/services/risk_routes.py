@@ -36,6 +36,7 @@ try:
         normalize_formula_type,
     )
 
+    from . import risk_formula
     from .rag_service import generate_advice, is_gemini_configured
     from .report import export_report
     from .supabase_client import (
@@ -57,6 +58,7 @@ except ImportError:
         normalize_formula_type,
     )
 
+    from services import risk_formula
     from services.rag_service import generate_advice, is_gemini_configured
     from services.report import export_report
     from services.supabase_client import (
@@ -608,12 +610,17 @@ def get_assessment_assets_api():
 # 計算風險
 # ============================================================
 
+def _company_weights(company_id):
+    """讀取公司權重設定,轉成鎖定公式使用的權重(預設 0.4/0.3/0.3)。"""
+    settings = RiskService.get_weight_settings(company_id)
+    return risk_formula.weights_from_settings(settings)
+
+
 @risk_bp.route(
     "/api/risk-assessments/calculate",
     methods=["POST"]
 )
 def calculate_risk_api():
-
     if not session.get("logged_in"):
         return _json_error(
             "未登入系統",
@@ -640,191 +647,40 @@ def calculate_risk_api():
         )
 
     try:
-        c = float(
-            data.get(
-                "confidentiality",
-                0
-            )
+        weights = _company_weights(company_id)
+
+        result = risk_formula.calculate_risk(
+            data.get("confidentiality"),
+            data.get("integrity"),
+            data.get("availability"),
+            data.get("legality", 0),
+            data.get("cvss_score", 0),
+            weights=weights
         )
 
-        i = float(
-            data.get(
-                "integrity",
-                0
-            )
+    except risk_formula.RiskInputError as exc:
+        return _json_error(
+            str(exc),
+            "INVALID_RISK_INPUT",
+            400
         )
-
-        a = float(
-            data.get(
-                "availability",
-                0
-            )
-        )
-
-        l = float(
-            data.get(
-                "legality",
-                0
-            )
-        )
-
-        cvss = float(
-            data.get(
-                "cvss_score",
-                0
-            )
-        )
-
-        likelihood = float(
-            data.get(
-                "likelihood_score",
-                1
-            )
-        )
-
-        # --------------------------
-        # 驗證
-        # --------------------------
-
-        if not 0 <= c <= 5:
-            raise ValueError(
-                "機密性必須介於 0~5"
-            )
-
-        if not 0 <= i <= 5:
-            raise ValueError(
-                "完整性必須介於 0~5"
-            )
-
-        if not 0 <= a <= 5:
-            raise ValueError(
-                "可用性必須介於 0~5"
-            )
-
-        if not 0 <= l <= 5:
-            raise ValueError(
-                "適法性必須介於 0~5"
-            )
-
-        if not 0 <= cvss <= 10:
-            raise ValueError(
-                "CVSS 必須介於 0~10"
-            )
-
-        if not 1 <= likelihood <= 5:
-            raise ValueError(
-                "發生機率必須介於 1~5"
-            )
-
-        # --------------------------
-        # 取得公司權重
-        # --------------------------
-
-        weight_settings = (
-            RiskService.get_weight_settings(
-                company_id
-            )
-        )
-
-        formula_type = (
-            weight_settings.get(
-                "formula_type",
-                "max"
-            )
-        )
-
-        wc = weight_settings.get(
-            "weight_c",
-            0.3333
-        )
-
-        wi = weight_settings.get(
-            "weight_i",
-            0.3333
-        )
-
-        wa = weight_settings.get(
-            "weight_a",
-            0.3333
-        )
-
-        # --------------------------
-        # Impact
-        # --------------------------
-
-        if formula_type == "weighted_average":
-            asset_value = round(
-                (c * wc)
-                + (i * wi)
-                + (a * wa),
-                2
-            )
-
-            impact_score = max(
-                asset_value,
-                l
-            )
-
-        else:
-            impact_score = max(
-                c,
-                i,
-                a,
-                l
-            )
-
-        # --------------------------
-        # Risk
-        # --------------------------
-
-        vulnerability_factor = (
-            cvss / 10.0
-            if cvss > 0
-            else 1.0
-        )
-
-        risk_score = round(
-            impact_score
-            * likelihood
-            * vulnerability_factor,
-            2
-        )
-
-        # --------------------------
-        # Risk Level
-        # --------------------------
-
-        if risk_score >= 12:
-            risk_level = "極高風險"
-
-        elif risk_score >= 8:
-            risk_level = "高風險"
-
-        elif risk_score >= 4:
-            risk_level = "中風險"
-
-        else:
-            risk_level = "低風險"
-
-        return jsonify({
-            "success": True,
-            "impact_score": impact_score,
-            "risk_score": risk_score,
-            "risk_level": risk_level,
-            "formula_used": formula_type
-        }), 200
 
     except Exception as exc:
         logger.exception(
-            "儲存評鑑紀錄失敗: %s",
+            "風險計算失敗: %s",
             exc
         )
 
         return _json_error(
-            "儲存評鑑紀錄失敗",
-            "SAVE_ASSESSMENT_FAILED",
+            "風險計算失敗",
+            "CALCULATE_RISK_FAILED",
             503
         )
+
+    return jsonify({
+        "success": True,
+        **result
+    }), 200
 
 
 # ============================================================
@@ -906,25 +762,13 @@ def save_risk_assessment_api():
         ""
     )
 
-    impact_score = data.get(
-        "impact_score"
-    )
-
-    likelihood_score = data.get(
-        "likelihood_score"
-    )
-
-    cvss_score = data.get(
-        "cvss_score"
-    )
-
-    risk_score = data.get(
-        "risk_score"
-    )
-
-    risk_level = data.get(
-        "risk_level"
-    )
+    # 衍生值(impact / risk_score / risk_level)一律由伺服器重算,
+    # 不信任前端送來的數字;只接受原始輸入。
+    raw_confidentiality = data.get("confidentiality")
+    raw_integrity = data.get("integrity")
+    raw_availability = data.get("availability")
+    raw_legality = data.get("legality", 0)
+    raw_cvss = data.get("cvss_score", 0)
 
     if asset_id is None or asset_id == "":
         return _json_error(
@@ -944,10 +788,19 @@ def save_risk_assessment_api():
             400
         )
 
-    if risk_score is None:
+    try:
+        computed = risk_formula.calculate_risk(
+            raw_confidentiality,
+            raw_integrity,
+            raw_availability,
+            raw_legality,
+            raw_cvss,
+            weights=_company_weights(company_id)
+        )
+    except risk_formula.RiskInputError as exc:
         return _json_error(
-            "缺少風險分數",
-            "MISSING_RISK_SCORE",
+            str(exc),
+            "INVALID_RISK_INPUT",
             400
         )
 
@@ -959,11 +812,12 @@ def save_risk_assessment_api():
         assessment_payload = {
             "asset_id": asset_id,
             "threat_description": threat_description,
-            "impact_score": impact_score,
-            "likelihood_score": likelihood_score,
-            "cvss_score": cvss_score,
-            "risk_score": risk_score,
-            "risk_level": risk_level,
+            "impact_score": computed["impact_score"],
+            # likelihood_score 欄位沿用,現存放 ThreatMult(威脅倍率)
+            "likelihood_score": computed["threat_mult"],
+            "cvss_score": float(raw_cvss or 0),
+            "risk_score": computed["risk_score"],
+            "risk_level": computed["risk_level"],
 
             # RiskOps Lite
             "status": "待處理",
@@ -980,7 +834,6 @@ def save_risk_assessment_api():
             assessment_payload,
             company_id=company_id
         )
-        print("DEBUG save result:", type(result), repr(result))
 
         # ====================================================
         # 一定要能從 insert 結果拿到合法的 assessment_id，
@@ -1027,6 +880,7 @@ def save_risk_assessment_api():
         return jsonify({
             "success": True,
             "assessment_id": assessment_id,
+            "computed": computed,
             "data": result
         }), 201
 
@@ -1051,7 +905,7 @@ def save_risk_assessment_api():
         )
 
         return _json_error(
-            f"儲存評鑑紀錄失敗：{type(exc).__name__}: {exc}",
+            "儲存評鑑紀錄失敗",
             "SAVE_ASSESSMENT_FAILED",
             503
         )
@@ -2140,6 +1994,34 @@ def ai_advice():
             "error": "CVSS 必須介於 0~10",
             "code": "INVALID_CVSS"
         }), 400
+
+    # ========================================================
+    # 11.5 衍生值由伺服器重算
+    #
+    # 不信任前端送來的 impact / risk_score / risk_level,
+    # 避免 AI 建議建立在被竄改或過期的分數上。
+    # ========================================================
+
+    try:
+        computed = risk_formula.calculate_risk(
+            confidentiality,
+            integrity,
+            availability,
+            legality,
+            cvss_score,
+            weights=_company_weights(company_id)
+        )
+    except risk_formula.RiskInputError as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+            "code": "INVALID_RISK_INPUT"
+        }), 400
+
+    impact_score = computed["impact_score"]
+    likelihood_score = computed["threat_mult"]
+    risk_score = computed["risk_score"]
+    risk_level = computed["risk_level"]
 
     if not is_gemini_configured():
         logger.warning(
