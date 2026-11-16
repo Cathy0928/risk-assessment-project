@@ -38,7 +38,7 @@
 
         <div class="nav-group">
             <div class="nav-group__label">資產管理</div>
-            <a class="nav-link" href="{{ url_for('asset_summary') }}"{% if ep in ('asset_summary', 'asset_edit', 'asset_delete') %} aria-current="page"{% endif %}>資產總表</a>
+            <a class="nav-link" href="{{ url_for('asset_summary') }}"{% if ep in ('asset_summary', 'asset_edit', 'asset_delete', 'cia.cia_review_page', 'cia.cia_review_generate', 'cia.cia_review_adopt') %} aria-current="page"{% endif %}>資產總表</a>
             <a class="nav-link" href="{{ url_for('asset_add') }}"{% if ep == 'asset_add' %} aria-current="page"{% endif %}>新增資產</a>
             <a class="nav-link" href="{{ url_for('asset_missing') }}"{% if ep == 'asset_missing' %} aria-current="page"{% endif %}>盤點缺漏檢查</a>
         </div>
